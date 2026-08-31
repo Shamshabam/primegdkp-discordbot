@@ -61,7 +61,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         title,
         description,
         faction: faction || 'alliance',
-        roles: roles || ['Tank', 'Healer', 'DPS', 'Fill', 'Bench'],
+        roles: roles || ['Tank', 'Healer', 'DPS', 'Fill'],
         scheduledFor,
         postedAt: new Date().toISOString(),
         status: 'posted',

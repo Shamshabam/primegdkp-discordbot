@@ -1,5 +1,7 @@
 import {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ModalBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
@@ -39,32 +41,15 @@ async function handleRoleSelect(interaction: StringSelectMenuInteraction): Promi
   const role = interaction.values[0];
 
   if (role === 'Fill') {
-    const modal = new ModalBuilder()
-      .setCustomId(`charname:${instanceId}:${role}:Fill:Fill`)
-      .setTitle('Character Name');
+    const button = new ButtonBuilder()
+      .setCustomId(`fillname:${instanceId}:Fill`)
+      .setLabel('Enter Character Name')
+      .setStyle(ButtonStyle.Primary);
 
-    const nameInput = new TextInputBuilder()
-      .setCustomId('character_name')
-      .setLabel('Enter your character name')
-      .setPlaceholder('e.g. Arthas')
-      .setStyle(TextInputStyle.Short)
-      .setMinLength(2)
-      .setMaxLength(12)
-      .setRequired(true);
-
-    const noteInput = new TextInputBuilder()
-      .setCustomId('signup_note')
-      .setLabel('Note (required for Fill)')
-      .setPlaceholder('e.g. Pala/Priest/Warrior, Can Tank, Can MC...')
-      .setStyle(TextInputStyle.Short)
-      .setMaxLength(100)
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(noteInput),
-    );
-    await interaction.showModal(modal);
+    await interaction.update({
+      content: '**Step 2/2** — Role: **Fill**. Click below to enter your character name:',
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+    });
     return;
   }
 

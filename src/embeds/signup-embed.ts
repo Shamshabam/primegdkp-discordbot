@@ -3,8 +3,8 @@ import type { EventInstance, Signup } from '../types.js';
 import { classDisplayOrder, findClass, findSpec, getCombatRole } from '../wow-classes.js';
 
 export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): EmbedBuilder {
-  const mainSignups = signups.filter((s) => s.role !== 'Bench');
-  const benchSignups = signups.filter((s) => s.role === 'Bench');
+  const mainSignups = signups.filter((s) => s.role !== 'Absence');
+  const absenceSignups = signups.filter((s) => s.role === 'Absence');
 
   // Assign global signup numbers based on signup order
   const ordered = [...mainSignups].sort((a, b) => a.signedUpAt.localeCompare(b.signedUpAt));
@@ -91,14 +91,14 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
     });
   }
 
-  // Bench
-  if (benchSignups.length > 0) {
-    const lines = benchSignups.map((s) => {
+  // Absence
+  if (absenceSignups.length > 0) {
+    const lines = absenceSignups.map((s) => {
       const cls = findClass(s.className);
-      return `${cls?.emoji ?? '❓'} ${s.characterName} *(${s.spec})*`;
+      return `${cls?.emoji ?? '❌'} ~~${s.characterName}~~`;
     });
     embed.addFields({
-      name: `🪑 Bench (${benchSignups.length})`,
+      name: `❌ Absence (${absenceSignups.length})`,
       value: lines.join('\n'),
       inline: false,
     });
