@@ -191,6 +191,11 @@ async function handleList(interaction: ChatInputCommandInteraction, store: Signu
 
 async function handleDelete(interaction: ChatInputCommandInteraction, store: SignupStore): Promise<void> {
   const id = interaction.options.getString('id', true);
+  const template = await store.getTemplate(id);
+  if (!template || template.guildId !== interaction.guildId) {
+    await interaction.reply({ content: 'Template not found.', ephemeral: true });
+    return;
+  }
   const deleted = await store.deleteTemplate(id);
   await interaction.reply({
     content: deleted ? `Deleted event \`${id}\`.` : `No event found with ID \`${id}\`.`,

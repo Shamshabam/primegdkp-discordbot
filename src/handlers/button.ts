@@ -24,6 +24,11 @@ export async function handleButton(interaction: ButtonInteraction, store: Signup
     }
 
     if (action === 'signup' || action === 'editsignup') {
+      if (instance.status === 'closed') {
+        await interaction.reply({ content: 'Signups are closed for this event.', ephemeral: true });
+        return;
+      }
+
       const select = new StringSelectMenuBuilder()
         .setCustomId(`role:${instanceId}:${instance.faction}`)
         .setPlaceholder('Choose your role')

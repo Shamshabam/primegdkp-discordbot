@@ -1,18 +1,72 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
+import cors from 'cors';
 import { AttachmentBuilder, ChannelType, Client, TextChannel } from 'discord.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import type { SignupStore } from './store/signup-store.js';
 import type { EventInstance } from './types.js';
 
+const postSignupSchema = z.object({
+  channelId: z.string(),
+  title: z.string().max(256),
+  faction: z.string(),
+  scheduledFor: z.string(),
+  roles: z.array(z.string()).optional(),
+  description: z.string().optional(),
+});
+
+const postMessageSchema = z.object({
+  channelId: z.string(),
+  content: z.string().max(2000),
+});
+
+const postImageSchema = z.object({
+  channelId: z.string(),
+  imageBase64: z.string().max(15_000_000),
+  filename: z.string().optional(),
+  content: z.string().optional(),
+});
+
+const updateMessageSchema = z.object({
+  channelId: z.string(),
+  messageId: z.string(),
+  content: z.string().max(2000).optional(),
+  imageBase64: z.string().max(15_000_000).optional(),
+  filename: z.string().max(255).optional(),
+});
+
+const ticketSchema = z.object({
+  discordName: z.string().max(100),
+  category: z.string().optional(),
+  subject: z.string().max(200),
+  message: z.string().max(1024),
+  ticketId: z.string(),
+  channelId: z.string(),
+});
+
 export function startApiServer(client: Client, store: SignupStore, config: Config): void {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
+  app.use(rateLimit({ windowMs: 60 * 1000, max: 60 }));
+  app.use(cors({ origin: process.env.WEBSITE_URL || 'https://primegdkp.com' }));
 
   app.use((req, res, next) => {
     const key = req.headers['x-api-key'];
-    if (!config.apiKey || key !== config.apiKey) {
+    if (!config.apiKey || !key) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    try {
+      const keyBuf = Buffer.from(String(key));
+      const expectedBuf = Buffer.from(config.apiKey);
+      if (keyBuf.length !== expectedBuf.length || !timingSafeEqual(keyBuf, expectedBuf)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+    } catch {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -42,7 +96,12 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   });
 
   app.post('/api/post-signup', async (req, res) => {
-    const { channelId, title, faction, scheduledFor, roles, description } = req.body;
+    const parsed = postSignupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+    const { channelId, title, faction, scheduledFor, roles, description } = parsed.data;
     try {
       const channel = await client.channels.fetch(channelId);
       if (!channel || channel.type !== ChannelType.GuildText) {
@@ -60,7 +119,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         messageId: '',
         title,
         description,
-        faction: faction || 'alliance',
+        faction: (faction || 'alliance') as EventInstance['faction'],
         roles: roles || ['Tank', 'Healer', 'DPS', 'Fill'],
         scheduledFor,
         postedAt: new Date().toISOString(),
@@ -82,7 +141,12 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   });
 
   app.post('/api/post-image', async (req, res) => {
-    const { channelId, imageBase64, filename, content } = req.body;
+    const parsed = postImageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+    const { channelId, imageBase64, filename, content } = parsed.data;
     try {
       const channel = await client.channels.fetch(channelId);
       if (!channel || !channel.isTextBased()) {
@@ -105,7 +169,12 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   });
 
   app.post('/api/post-message', async (req, res) => {
-    const { channelId, content } = req.body;
+    const parsed = postMessageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+    const { channelId, content } = parsed.data;
     try {
       const channel = await client.channels.fetch(channelId);
       if (!channel || !channel.isTextBased()) {
@@ -122,7 +191,12 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   });
 
   app.post('/api/update-message', async (req, res) => {
-    const { channelId, messageId, content, imageBase64, filename } = req.body;
+    const parsed = updateMessageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
+      return;
+    }
+    const { channelId, messageId, content, imageBase64, filename } = parsed.data;
     try {
       const channel = await client.channels.fetch(channelId);
       if (!channel || !channel.isTextBased()) {
@@ -158,7 +232,12 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   });
 
   app.post('/api/tickets', async (req, res) => {
-    const { discordName, category, subject, message, ticketId, channelId } = req.body;
+    const parsed = ticketSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+    const { discordName, category, subject, message, ticketId, channelId } = parsed.data;
     try {
       const channel = await client.channels.fetch(channelId);
       if (!channel || !channel.isTextBased()) {
@@ -179,7 +258,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         color: 0xef4444,
         fields: [
           { name: 'From', value: discordName, inline: true },
-          { name: 'Category', value: categoryLabels[category] || category, inline: true },
+          { name: 'Category', value: (category && categoryLabels[category]) || category || 'General', inline: true },
           { name: 'Subject', value: subject || 'No subject', inline: false },
           { name: 'Message', value: message.length > 1024 ? message.substring(0, 1021) + '...' : message, inline: false },
         ],
@@ -222,20 +301,28 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     }
   });
 
-  app.get('/api/instances', async (_req, res) => {
+  app.get('/api/instances', async (req, res) => {
+    const guildId = req.query.guildId;
+    if (!guildId || typeof guildId !== 'string') {
+      res.status(400).json({ error: 'guildId query parameter is required' });
+      return;
+    }
     try {
       const storePath = await import('node:fs/promises');
       const { join } = await import('node:path');
       const raw = await storePath.readFile(join(process.cwd(), 'data', 'store.json'), 'utf-8');
       const data = JSON.parse(raw);
-      res.json({ instances: data.instances || [], signups: data.signups || [] });
+      const instances = (data.instances || []).filter((i: EventInstance) => i.guildId === guildId);
+      const instanceIds = new Set(instances.map((i: EventInstance) => i.id));
+      const signups = (data.signups || []).filter((s: { eventInstanceId: string }) => instanceIds.has(s.eventInstanceId));
+      res.json({ instances, signups });
     } catch {
       res.json({ instances: [], signups: [] });
     }
   });
 
   const port = config.apiPort || 3001;
-  app.listen(port, () => {
-    console.log(`API server listening on port ${port}`);
+  app.listen(port, '127.0.0.1', () => {
+    console.log(`API server listening on 127.0.0.1:${port}`);
   });
 }
