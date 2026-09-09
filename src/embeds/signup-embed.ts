@@ -11,17 +11,17 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
   const signupNumber = new Map<string, number>();
   ordered.forEach((s, i) => signupNumber.set(s.id, i + 1));
 
-  // Combat role counts
+  // Role-bucket counts for the overview. Fill sits outside the three buckets,
+  // so it is left out of the tally the same way it has its own section below.
   let tankCount = 0;
-  let meleeCount = 0;
-  let rangedCount = 0;
   let healerCount = 0;
+  let dpsCount = 0;
   for (const s of mainSignups) {
-    const cr = getCombatRole(s.className, s.spec);
-    if (cr === 'tank') tankCount++;
-    else if (cr === 'melee') meleeCount++;
-    else if (cr === 'ranged') rangedCount++;
-    else if (cr === 'healer') healerCount++;
+    if (s.role === 'Fill') continue;
+    const bucket = bucketOf(s);
+    if (bucket === 'Tank') tankCount++;
+    else if (bucket === 'Healer') healerCount++;
+    else dpsCount++;
   }
 
   const embed = new EmbedBuilder()
@@ -39,42 +39,31 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
     { name: '​', value: `👥 **${mainSignups.length}**  ·  🕐 <t:${unixTs}:R>`, inline: true },
   );
 
-  // Role summary: Tank · Melee · Ranged · Healers
+  // Role summary: Tanks · Healers · DPS, the three buckets the list is split by.
   const totalDouses = mainSignups.reduce((sum, s) => sum + (s.douses ?? 0), 0);
   const douseSummary = totalDouses > 0 ? `  ·  🧪 **${totalDouses}** Douses` : '';
   embed.addFields({
     name: '​',
-    value: `🛡️ **${tankCount}** Tank  ·  🔴 **${meleeCount}** Melee  ·  🟢 **${rangedCount}** Ranged  ·  💚 **${healerCount}** Healers${douseSummary}`,
+    value: `🛡️ **${tankCount}** Tanks  ·  💚 **${healerCount}** Healers  ·  ⚔️ **${dpsCount}** DPS${douseSummary}`,
     inline: false,
   });
 
-  // Tank section first (cross-class)
-  const tanks = mainSignups.filter((s) => s.role === 'Tank');
-  if (tanks.length > 0) {
-    const lines = tanks.map((s) => formatLine(s, signupNumber.get(s.id) ?? 0));
-    embed.addFields({ name: `🛡️ Tank (${tanks.length})`, value: lines.join('\n'), inline: true });
-  }
+  // Split by role first, then by class inside each - a Tank divider with the
+  // warriors, druids and paladins who signed as tanks under it, and the same
+  // for healers and DPS. The bucket is the role the signer picked, which
+  // defaults from their spec, so a Feral who chose Tank lands under Tanks.
+  const buckets: { key: RoleBucket; header: string }[] = [
+    { key: 'Tank', header: '🛡️  —  TANKS  —' },
+    { key: 'Healer', header: '💚  —  HEALERS  —' },
+    { key: 'DPS', header: '⚔️  —  DPS  —' },
+  ];
 
-  // Class sections (non-tank, non-fill signups)
-  const nonTankSignups = mainSignups.filter((s) => s.role !== 'Tank' && s.role !== 'Fill');
-  const byClass = new Map<string, Signup[]>();
-  for (const s of nonTankSignups) {
-    const arr = byClass.get(s.className) ?? [];
-    arr.push(s);
-    byClass.set(s.className, arr);
-  }
+  for (const { key, header } of buckets) {
+    const inBucket = mainSignups.filter((s) => s.role !== 'Fill' && bucketOf(s) === key);
+    if (inBucket.length === 0) continue;
 
-  for (const className of classDisplayOrder(instance.faction)) {
-    const classSignups = byClass.get(className);
-    if (!classSignups || classSignups.length === 0) continue;
-
-    const wowClass = findClass(className);
-    const lines = classSignups.map((s) => formatLine(s, signupNumber.get(s.id) ?? 0));
-    embed.addFields({
-      name: `${wowClass?.emoji ?? '❓'} ${className} (${classSignups.length})`,
-      value: lines.join('\n'),
-      inline: true,
-    });
+    embed.addFields({ name: header, value: '​', inline: false });
+    addClassFields(embed, inBucket, instance.faction, signupNumber);
   }
 
   // Fill
@@ -112,13 +101,61 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
   return embed;
 }
 
+type RoleBucket = 'Tank' | 'Healer' | 'DPS';
+
+/**
+ * Which of the three buckets a signup belongs in.
+ *
+ * The role the signer picked wins - it already defaults from their spec in the
+ * signup flow - and anything else is placed from the spec's combat role so a
+ * stray value still lands somewhere sensible rather than vanishing.
+ */
+function bucketOf(signup: Signup): RoleBucket {
+  if (signup.role === 'Tank' || signup.role === 'Healer' || signup.role === 'DPS') {
+    return signup.role;
+  }
+
+  const combatRole = getCombatRole(signup.className, signup.spec);
+
+  return combatRole === 'tank' ? 'Tank' : combatRole === 'healer' ? 'Healer' : 'DPS';
+}
+
+/** One inline field per class present, in the raid's display order. */
+function addClassFields(
+  embed: EmbedBuilder,
+  signups: Signup[],
+  faction: EventInstance['faction'],
+  signupNumber: Map<string, number>,
+): void {
+  const byClass = new Map<string, Signup[]>();
+  for (const s of signups) {
+    const arr = byClass.get(s.className) ?? [];
+    arr.push(s);
+    byClass.set(s.className, arr);
+  }
+
+  for (const className of classDisplayOrder(faction)) {
+    const classSignups = byClass.get(className);
+    if (!classSignups || classSignups.length === 0) continue;
+
+    const wowClass = findClass(className);
+    const lines = classSignups.map((s) => formatLine(s, signupNumber.get(s.id) ?? 0));
+    embed.addFields({
+      name: `${wowClass?.emoji ?? '❓'} ${className} (${classSignups.length})`,
+      value: lines.join('\n'),
+      inline: true,
+    });
+  }
+}
+
 function formatLine(signup: Signup, num: number): string {
   const wowClass = findClass(signup.className);
   const spec = wowClass ? findSpec(wowClass, signup.spec) : undefined;
   const padded = String(num).padStart(2, ' ');
+  const nickname = signup.discordNickname ?? signup.discordUsername;
   const noteStr = signup.note ? ` 📝` : '';
   const douseStr = signup.douses && signup.douses > 0 ? ` 🧪${signup.douses}` : '';
-  return `${spec?.emoji ?? '❓'} \`${padded}\` **${signup.characterName}**${douseStr}${noteStr}`;
+  return `${spec?.emoji ?? '❓'} \`${padded}\` **${signup.characterName}** — ${nickname}${douseStr}${noteStr}`;
 }
 
 export function buildSignupButtons(instanceId: string, closed: boolean): ActionRowBuilder<ButtonBuilder> {

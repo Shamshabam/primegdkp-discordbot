@@ -4,6 +4,7 @@ import {
   StringSelectMenuOptionBuilder,
   type ModalSubmitInteraction,
 } from 'discord.js';
+import { guildDisplayName } from '../discord-names.js';
 import { extractErrorMessage } from '../error.js';
 import { refreshSignupMessage } from '../signup-service.js';
 import type { SignupStore } from '../store/signup-store.js';
@@ -71,6 +72,7 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction, sto
       eventInstanceId: instanceId,
       discordUserId: interaction.user.id,
       discordUsername: interaction.user.username,
+      discordNickname: guildDisplayName(interaction),
       role,
       className,
       spec,

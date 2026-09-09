@@ -9,6 +9,7 @@ import {
   TextInputStyle,
   type StringSelectMenuInteraction,
 } from 'discord.js';
+import { guildDisplayName } from '../discord-names.js';
 import { extractErrorMessage } from '../error.js';
 import { refreshSignupMessage } from '../signup-service.js';
 import type { SignupStore } from '../store/signup-store.js';
@@ -145,6 +146,7 @@ async function handleDouseSelect(interaction: StringSelectMenuInteraction, store
     eventInstanceId: instanceId,
     discordUserId: interaction.user.id,
     discordUsername: interaction.user.username,
+    discordNickname: guildDisplayName(interaction),
     role: pending.role,
     className: pending.className,
     spec: pending.spec,

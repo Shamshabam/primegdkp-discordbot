@@ -47,6 +47,8 @@ export interface Signup {
   eventInstanceId: string;
   discordUserId: string;
   discordUsername: string;
+  /** Their nickname on this Discord server, falling back to global name. */
+  discordNickname?: string;
   role: string;
   className: string;
   spec: string;
