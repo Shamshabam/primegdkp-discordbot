@@ -20,6 +20,11 @@ export interface EventTemplate {
   faction: Faction;
   roles: string[];
   schedule: WeeklySchedule;
+  /**
+   * Whether the weekly post still goes out. Absent means yes: every template
+   * written before this flag existed keeps posting.
+   */
+  enabled?: boolean;
   nextFireAt: string;
   createdBy: string;
   createdAt: string;

@@ -23,10 +23,15 @@ async function checkAndPost(client: Client, store: SignupStore): Promise<void> {
     for (const template of templates) {
       if (new Date(template.nextFireAt) > now) continue;
 
-      try {
-        await postInstance(client, store, template);
-      } catch (error) {
-        console.error(`Failed to post recurring event ${template.id}:`, error);
+      // A template that has been switched off keeps its schedule and rolls
+      // forward like any other, it just does not post. Otherwise switching it
+      // back on would fire every missed week at once.
+      if (template.enabled !== false) {
+        try {
+          await postInstance(client, store, template);
+        } catch (error) {
+          console.error(`Failed to post recurring event ${template.id}:`, error);
+        }
       }
 
       const next = nextOccurrence(template.schedule, now);

@@ -7,7 +7,8 @@ import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import type { SignupStore } from './store/signup-store.js';
-import type { EventInstance } from './types.js';
+import { nextOccurrence } from './schedule/next-occurrence.js';
+import type { EventInstance, EventTemplate } from './types.js';
 
 const postSignupSchema = z.object({
   channelId: z.string(),
@@ -36,6 +37,25 @@ const updateMessageSchema = z.object({
   content: z.string().max(2000).optional(),
   imageBase64: z.string().max(15_000_000).optional(),
   filename: z.string().max(255).optional(),
+});
+
+/**
+ * What the website may change about a recurring post. The channel, roles and
+ * faction stay where they were set from Discord: those are decisions about the
+ * server, not about when the signup goes up.
+ */
+const templatePatchSchema = z.object({
+  title: z.string().min(1).max(256).optional(),
+  description: z.string().max(2000).optional(),
+  enabled: z.boolean().optional(),
+  schedule: z
+    .object({
+      dayOfWeek: z.number().int().min(0).max(6),
+      hour: z.number().int().min(0).max(23),
+      minute: z.number().int().min(0).max(59),
+      timezone: z.string().max(64).optional(),
+    })
+    .optional(),
 });
 
 const ticketSchema = z.object({
@@ -298,6 +318,69 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     } catch (err) {
       console.error('Failed to delete instance:', err);
       res.status(500).json({ error: 'Failed to delete instance' });
+    }
+  });
+
+  app.get('/api/templates', async (req, res) => {
+    const guildId = req.query.guildId;
+    if (!guildId || typeof guildId !== 'string') {
+      res.status(400).json({ error: 'guildId query parameter is required' });
+      return;
+    }
+    try {
+      res.json({ templates: await store.listTemplates(guildId) });
+    } catch (err) {
+      console.error('Failed to list templates:', err);
+      res.status(500).json({ error: 'Failed to list templates' });
+    }
+  });
+
+  app.patch('/api/templates/:templateId', async (req, res) => {
+    const parsed = templatePatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request', details: parsed.error.issues });
+      return;
+    }
+
+    try {
+      const template = await store.getTemplate(req.params.templateId);
+      if (!template) {
+        res.status(404).json({ error: 'Template not found' });
+        return;
+      }
+
+      const { schedule, ...rest } = parsed.data;
+      const patch: Partial<EventTemplate> = { ...rest };
+
+      if (schedule) {
+        // The stored timezone is the one the raid was scheduled in; a caller
+        // that does not name one is talking about that same clock.
+        patch.schedule = { ...schedule, timezone: schedule.timezone ?? template.schedule.timezone };
+        patch.nextFireAt = nextOccurrence(patch.schedule).toISOString();
+      }
+
+      await store.updateTemplate(template.id, patch);
+      res.json({ template: await store.getTemplate(template.id) });
+    } catch (err) {
+      console.error('Failed to update template:', err);
+      res.status(500).json({ error: 'Failed to update template' });
+    }
+  });
+
+  app.delete('/api/templates/:templateId', async (req, res) => {
+    try {
+      const deleted = await store.deleteTemplate(req.params.templateId);
+      if (!deleted) {
+        res.status(404).json({ error: 'Template not found' });
+        return;
+      }
+
+      // Signups already posted from it stay up: deleting the schedule stops
+      // the next one, it does not call off the raid people signed up to.
+      res.json({ success: true, deletedTemplateId: req.params.templateId });
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+      res.status(500).json({ error: 'Failed to delete template' });
     }
   });
 
