@@ -70,8 +70,9 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
   const fillSignups = mainSignups.filter((s) => s.role === 'Fill');
   if (fillSignups.length > 0) {
     const lines = fillSignups.map((s) => {
-      const noteStr = s.note ? ` *(${s.note})*` : '';
-      return `🔄 \`${String(signupNumber.get(s.id) ?? 0).padStart(2, ' ')}\` **${s.characterName}**${noteStr}`;
+      const noteStr = s.note ? NOTE_MARK : '';
+
+      return `🔄 \`${String(signupNumber.get(s.id) ?? 0).padStart(2, ' ')}\` ${who(s)}${noteStr}`;
     });
     embed.addFields({
       name: `🔄 Fill (${fillSignups.length})`,
@@ -84,7 +85,9 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
   if (absenceSignups.length > 0) {
     const lines = absenceSignups.map((s) => {
       const cls = findClass(s.className);
-      return `${cls?.emoji ?? '❌'} ~~${s.characterName}~~`;
+      const nickname = s.discordNickname ?? s.discordUsername;
+
+      return `${cls?.emoji ?? '❌'} ${nickname ? `${nickname} - ` : ''}~~${s.characterName}~~`;
     });
     embed.addFields({
       name: `❌ Absence (${absenceSignups.length})`,
@@ -148,14 +151,38 @@ function addClassFields(
   }
 }
 
+/**
+ * Who somebody is, on one line: the name they go by in Discord, then the
+ * character they are bringing.
+ *
+ * Both are wanted for different reasons - the raid leader knows people by
+ * their Discord name and the game knows them by the character - so neither
+ * one on its own is enough to work out who has signed.
+ */
+function who(signup: Signup): string {
+    const nickname = signup.discordNickname ?? signup.discordUsername;
+
+    return nickname ? `${nickname} - **${signup.characterName}**` : `**${signup.characterName}**`;
+}
+
+/**
+ * A note is marked rather than printed.
+ *
+ * Discord has no hover text in a message, so the choice is a mark or the
+ * whole note inline; forty signups with a sentence each is unreadable. The
+ * glyph is a text one rather than an emoji, which renders at the size of the
+ * line instead of standing a head above it.
+ */
+const NOTE_MARK = ' \u270E';
+
 function formatLine(signup: Signup, num: number): string {
   const wowClass = findClass(signup.className);
   const spec = wowClass ? findSpec(wowClass, signup.spec) : undefined;
   const padded = String(num).padStart(2, ' ');
-  const nickname = signup.discordNickname ?? signup.discordUsername;
-  const noteStr = signup.note ? ` 📝` : '';
+  const noteStr = signup.note ? NOTE_MARK : '';
   const douseStr = signup.douses && signup.douses > 0 ? ` 🧪${signup.douses}` : '';
-  return `${spec?.emoji ?? '❓'} \`${padded}\` **${signup.characterName}** — ${nickname}${douseStr}${noteStr}`;
+
+  return `${spec?.emoji ?? '❓'} \`${padded}\` ${who(signup)}${douseStr}${noteStr}`;
 }
 
 export function buildSignupButtons(instanceId: string, closed: boolean): ActionRowBuilder<ButtonBuilder> {

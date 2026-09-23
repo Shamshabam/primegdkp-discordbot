@@ -44,14 +44,14 @@ function fields(signups: Signup[]): { name: string; value: string }[] {
 }
 
 describe('signup embed', () => {
-  it('shows each line as "Character - Nickname" using the server nickname', () => {
+  it('shows each line as "Nickname - Character" using the server nickname', () => {
     const line = fields([
       signup({ characterName: 'Blamethetank', discordNickname: 'Sham', role: 'Tank', className: 'Warrior', spec: 'Protection' }),
     ])
       .map((f) => f.value)
       .join('\n');
 
-    expect(line).toContain('**Blamethetank** — Sham');
+    expect(line).toContain('Sham - **Blamethetank**');
   });
 
   it('falls back to the username when no nickname was captured', () => {
@@ -61,7 +61,7 @@ describe('signup embed', () => {
       .map((f) => f.value)
       .join('\n');
 
-    expect(line).toContain('**Oldsignup** — legacyuser');
+    expect(line).toContain('legacyuser - **Oldsignup**');
   });
 
   it('splits the roster into Tanks, Healers and DPS in that order', () => {
