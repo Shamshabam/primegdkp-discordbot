@@ -106,6 +106,11 @@ export class JsonFileStore implements SignupStore {
     });
   }
 
+  async listOpenInstances(): Promise<EventInstance[]> {
+    const data = await this.read();
+    return data.instances.filter((i) => i.status !== 'closed');
+  }
+
   async getRoster(instanceId: string): Promise<PostedRoster | undefined> {
     const data = await this.read();
     return (data.rosters ?? []).find((r) => r.instanceId === instanceId);

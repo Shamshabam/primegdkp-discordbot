@@ -51,7 +51,8 @@ describe('signup embed', () => {
       .map((f) => f.value)
       .join('\n');
 
-    expect(line).toContain('Sham - **Blamethetank**');
+    // The Discord name is what the list is answering, so it carries the weight.
+    expect(line).toContain('**Sham** - Blamethetank');
   });
 
   it('falls back to the username when no nickname was captured', () => {
@@ -61,7 +62,7 @@ describe('signup embed', () => {
       .map((f) => f.value)
       .join('\n');
 
-    expect(line).toContain('legacyuser - **Oldsignup**');
+    expect(line).toContain('**legacyuser** - Oldsignup');
   });
 
   it('splits the roster into Tanks, Healers and DPS in that order', () => {

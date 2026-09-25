@@ -7,6 +7,7 @@ import { handleButton } from './handlers/button.js';
 import { handleModalSubmit } from './handlers/modal-submit.js';
 import { handleSelectMenu } from './handlers/select-menu.js';
 import { startScheduler } from './scheduler.js';
+import { refreshOpenSignups } from './signup-service.js';
 import { createStore } from './store/index.js';
 
 dotenv.config();
@@ -35,6 +36,10 @@ client.once('ready', (c) => {
   console.log(`Bot online as ${c.user.tag}`);
   startScheduler(c, store);
   startApiServer(c, store, config);
+
+  // Posts made before the current layout catch up here rather than waiting for
+  // the next person to sign up.
+  void refreshOpenSignups(c, store);
 });
 
 client.login(config.discordBotToken);

@@ -159,10 +159,19 @@ function addClassFields(
  * their Discord name and the game knows them by the character - so neither
  * one on its own is enough to work out who has signed.
  */
+/**
+ * Who signed up, and what they are bringing.
+ *
+ * The Discord name carries the weight because that is the question being
+ * asked of this list - who is coming - and the character is the detail. Discord
+ * has no font sizes in an embed, so the difference is bold against plain; the
+ * only real size control is subtext, which takes a whole line and would double
+ * the length of a forty-name list.
+ */
 function who(signup: Signup): string {
     const nickname = signup.discordNickname ?? signup.discordUsername;
 
-    return nickname ? `${nickname} - **${signup.characterName}**` : `**${signup.characterName}**`;
+    return nickname ? `**${nickname}** - ${signup.characterName}` : `**${signup.characterName}**`;
 }
 
 /**

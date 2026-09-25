@@ -18,6 +18,9 @@ export interface SignupStore {
   getInstance(id: string): Promise<EventInstance | undefined>;
   deleteInstance(id: string): Promise<EventInstance | undefined>;
 
+  /** Every event still taking signups, so their messages can be brought up to date. */
+  listOpenInstances(): Promise<EventInstance[]>;
+
   /** The roster posted for an event, if one has been. */
   getRoster(instanceId: string): Promise<PostedRoster | undefined>;
 
