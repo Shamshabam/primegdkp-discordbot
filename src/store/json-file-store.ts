@@ -1,16 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { EventInstance, EventTemplate, Signup } from '../types.js';
+import type { EventInstance, EventTemplate, PostedRoster, Signup } from '../types.js';
 import type { SignupStore } from './signup-store.js';
 
 interface Data {
   templates: EventTemplate[];
   instances: EventInstance[];
   signups: Signup[];
+  /** Optional: every file written before rosters existed has none. */
+  rosters?: PostedRoster[];
 }
 
-const EMPTY: Data = { templates: [], instances: [], signups: [] };
+const EMPTY: Data = { templates: [], instances: [], signups: [], rosters: [] };
 
 /**
  * File-backed SignupStore. Writes are serialized through `queue` so
@@ -101,6 +103,42 @@ export class JsonFileStore implements SignupStore {
       data.instances = data.instances.filter((i) => i.id !== id);
       data.signups = data.signups.filter((s) => s.eventInstanceId !== id);
       return { data, result: instance };
+    });
+  }
+
+  async getRoster(instanceId: string): Promise<PostedRoster | undefined> {
+    const data = await this.read();
+    return (data.rosters ?? []).find((r) => r.instanceId === instanceId);
+  }
+
+  saveRoster(roster: PostedRoster): Promise<void> {
+    return this.mutate(async (data) => {
+      const rosters = data.rosters ?? [];
+      const existing = rosters.find((r) => r.instanceId === roster.instanceId);
+
+      if (existing) {
+        // The answers people have already given survive a re-push of the
+        // roster: the raid leader moving somebody between groups is not
+        // them un-confirming.
+        Object.assign(existing, roster, { confirmations: { ...existing.confirmations, ...roster.confirmations } });
+      } else {
+        rosters.push(roster);
+      }
+
+      data.rosters = rosters;
+      return { data, result: undefined };
+    });
+  }
+
+  setConfirmation(instanceId: string, characterKey: string, answer: 'confirmed' | 'cancelled'): Promise<PostedRoster | undefined> {
+    return this.mutate(async (data) => {
+      const roster = (data.rosters ?? []).find((r) => r.instanceId === instanceId);
+
+      if (roster) {
+        roster.confirmations[characterKey] = answer;
+      }
+
+      return { data, result: roster };
     });
   }
 

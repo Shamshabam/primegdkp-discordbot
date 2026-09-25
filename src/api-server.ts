@@ -6,6 +6,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
+import { buildRosterButtons, rosterAttachment } from './roster-service.js';
 import type { SignupStore } from './store/signup-store.js';
 import { nextOccurrence } from './schedule/next-occurrence.js';
 import type { EventInstance, EventTemplate } from './types.js';
@@ -29,6 +30,19 @@ const postImageSchema = z.object({
   imageBase64: z.string().max(15_000_000),
   filename: z.string().optional(),
   content: z.string().optional(),
+});
+
+const rosterPlayerSchema = z.object({
+  characterName: z.string().min(1).max(32),
+  className: z.string().max(32).default(''),
+  spec: z.string().max(32).optional(),
+});
+
+const postRosterSchema = z.object({
+  channelId: z.string(),
+  /** The signup event, so the Sign up button reaches the same place the signup message does. */
+  instanceId: z.string(),
+  groups: z.array(z.array(rosterPlayerSchema.nullable())).max(8),
 });
 
 const updateMessageSchema = z.object({
@@ -185,6 +199,64 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     } catch (err) {
       console.error('Failed to post image:', err);
       res.status(500).json({ error: 'Failed to post image' });
+    }
+  });
+
+  /**
+   * Post or update the raid roster.
+   *
+   * The website sends the roster itself rather than a picture of it, because
+   * the picture has to be redrawn whenever somebody presses Confirm - and a
+   * canvas in a browser nobody has open cannot be asked to do that.
+   */
+  app.post('/api/post-roster', async (req, res) => {
+    const parsed = postRosterSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+
+    const { channelId, instanceId, groups } = parsed.data;
+
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) {
+        res.status(400).json({ error: 'Invalid channel' });
+        return;
+      }
+
+      const existing = await store.getRoster(instanceId);
+      const instance = await store.getInstance(instanceId);
+      const roster = {
+        instanceId,
+        channelId,
+        messageId: existing?.messageId ?? '',
+        groups,
+        // Answers already given survive a re-push: moving somebody between
+        // groups is the raid leader organising, not that player un-confirming.
+        confirmations: existing?.confirmations ?? {},
+        postedAt: existing?.postedAt ?? new Date().toISOString(),
+      };
+
+      const components = [buildRosterButtons(instanceId, instance?.status === 'closed')];
+
+      if (existing?.messageId) {
+        const message = await (channel as TextChannel).messages.fetch(existing.messageId);
+        await message.edit({ files: [rosterAttachment(roster)], components });
+      } else {
+        const message = await (channel as TextChannel).send({
+          files: [rosterAttachment(roster)],
+          components,
+        });
+        roster.messageId = message.id;
+      }
+
+      await store.saveRoster(roster);
+
+      res.json({ messageId: roster.messageId });
+    } catch (err) {
+      console.error('Failed to post roster:', err);
+      res.status(500).json({ error: 'Failed to post roster' });
     }
   });
 

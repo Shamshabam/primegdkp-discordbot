@@ -1,4 +1,4 @@
-import type { EventInstance, EventTemplate, Signup } from '../types.js';
+import type { EventInstance, EventTemplate, Signup, PostedRoster } from '../types.js';
 
 /**
  * Everything the bot needs to persist. The JSON file implementation lets the
@@ -17,6 +17,15 @@ export interface SignupStore {
   createInstance(instance: EventInstance): Promise<EventInstance>;
   getInstance(id: string): Promise<EventInstance | undefined>;
   deleteInstance(id: string): Promise<EventInstance | undefined>;
+
+  /** The roster posted for an event, if one has been. */
+  getRoster(instanceId: string): Promise<PostedRoster | undefined>;
+
+  /** Store the roster for an event, replacing any earlier one. */
+  saveRoster(roster: PostedRoster): Promise<void>;
+
+  /** Record an answer on the roster, and hand back the roster it changed. */
+  setConfirmation(instanceId: string, characterKey: string, answer: 'confirmed' | 'cancelled'): Promise<PostedRoster | undefined>;
 
   upsertSignup(signup: Omit<Signup, 'id' | 'signedUpAt'>): Promise<Signup>;
   removeSignup(eventInstanceId: string, discordUserId: string): Promise<void>;
