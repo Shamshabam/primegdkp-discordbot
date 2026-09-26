@@ -96,6 +96,18 @@ export class JsonFileStore implements SignupStore {
     return data.instances.find((i) => i.id === id);
   }
 
+  updateInstance(id: string, patch: Partial<EventInstance>): Promise<EventInstance | undefined> {
+    return this.mutate(async (data) => {
+      const instance = data.instances.find((i) => i.id === id);
+      if (!instance) return { data, result: undefined };
+      // id, channel and message identify the post - patching those would point
+      // the record at a message it does not belong to.
+      const { id: _id, channelId: _channelId, messageId: _messageId, ...rest } = patch;
+      Object.assign(instance, rest);
+      return { data, result: instance };
+    });
+  }
+
   deleteInstance(id: string): Promise<EventInstance | undefined> {
     return this.mutate(async (data) => {
       const instance = data.instances.find((i) => i.id === id);

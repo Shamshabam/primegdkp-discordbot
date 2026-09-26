@@ -16,6 +16,9 @@ export interface SignupStore {
   /** Caller supplies `id` (generated before the Discord message is sent, so button custom_ids can reference it). */
   createInstance(instance: EventInstance): Promise<EventInstance>;
   getInstance(id: string): Promise<EventInstance | undefined>;
+
+  /** Change a posted event - its title, or when it starts - in place. */
+  updateInstance(id: string, patch: Partial<EventInstance>): Promise<EventInstance | undefined>;
   deleteInstance(id: string): Promise<EventInstance | undefined>;
 
   /** Every event still taking signups, so their messages can be brought up to date. */

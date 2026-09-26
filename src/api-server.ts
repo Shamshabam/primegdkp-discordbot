@@ -6,6 +6,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
+import { refreshSignupMessage } from './signup-service.js';
 import { buildRosterButtons, rosterAttachment } from './roster-service.js';
 import type { SignupStore } from './store/signup-store.js';
 import { nextOccurrence } from './schedule/next-occurrence.js';
@@ -18,6 +19,19 @@ const postSignupSchema = z.object({
   scheduledFor: z.string(),
   roles: z.array(z.string()).optional(),
   description: z.string().optional(),
+});
+
+/**
+ * What the website may change about a signup that is already posted: what it is
+ * called and when it starts. Everything else about the post - who has signed
+ * up, which channel it is in, which message it is - is not a correction, it is
+ * a different post.
+ */
+const updateInstanceSchema = z.object({
+  title: z.string().max(256).optional(),
+  scheduledFor: z.string().optional(),
+}).refine((v) => v.title !== undefined || v.scheduledFor !== undefined, {
+  message: 'Nothing to change',
 });
 
 const postMessageSchema = z.object({
@@ -126,6 +140,37 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
       res.json({ channels: Array.from(textChannels.values()) });
     } catch {
       res.status(500).json({ error: 'Failed to fetch channels' });
+    }
+  });
+
+  /**
+   * Change a signup that is already up.
+   *
+   * The embed is drawn from the stored event every time it is edited, so
+   * correcting the event and re-rendering is all it takes - the post keeps its
+   * id, its buttons and everybody who has already signed up.
+   */
+  app.patch('/api/instances/:instanceId', async (req, res) => {
+    const parsed = updateInstanceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+
+    try {
+      const updated = await store.updateInstance(req.params.instanceId, parsed.data);
+
+      if (!updated) {
+        res.status(404).json({ error: 'No such event' });
+        return;
+      }
+
+      await refreshSignupMessage(client, store, updated.id);
+
+      res.json({ success: true, instance: updated });
+    } catch (err) {
+      console.error('Failed to update instance:', err);
+      res.status(500).json({ error: 'Failed to update instance' });
     }
   });
 
