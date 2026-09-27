@@ -1,6 +1,7 @@
 import type { Client } from 'discord.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import type { SignupStore } from './store/signup-store.js';
+import { backfillNicknames } from './nicknames.js';
 
 /**
  * Bring every open signup message up to date with how the bot renders today.
@@ -31,7 +32,13 @@ export async function refreshSignupMessage(client: Client, store: SignupStore, i
   const instance = await store.getInstance(instanceId);
   if (!instance) return;
 
-  const signups = await store.listSignups(instanceId);
+  const stored = await store.listSignups(instanceId);
+
+  // Everybody who signed up before their server nickname was recorded is
+  // still down as a raw Discord username, which is not what anybody is
+  // called in the channel. Looked up once and written back.
+  const signups = await backfillNicknames(client, store, instance.guildId, stored);
+
   const channel = await client.channels.fetch(instance.channelId);
   if (!channel || !channel.isTextBased()) return;
 
