@@ -101,6 +101,22 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   app.use(rateLimit({ windowMs: 60 * 1000, max: 60 }));
   app.use(cors({ origin: process.env.WEBSITE_URL || 'https://primegdkp.com' }));
 
+  /**
+   * Which build is answering, and since when.
+   *
+   * Registered before the key check on purpose: this exists to be asked from
+   * an SSH session when something is wrong, and needing to dig the key out of
+   * .env first is exactly the friction that stops it being asked. It says
+   * nothing a caller does not already know - the routes are in a public
+   * repository - and it only listens on 127.0.0.1.
+   */
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      startedAt: startedAt.toISOString(),
+      routes: listRoutes(app),
+    });
+  });
+
   app.use((req, res, next) => {
     const key = req.headers['x-api-key'];
     if (!config.apiKey || !key) {
@@ -519,24 +535,6 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     } catch {
       res.json({ instances: [], signups: [] });
     }
-  });
-
-  /**
-   * Which build is answering.
-   *
-   * Unauthenticated on purpose - it says nothing a caller does not already
-   * know - and listed last so it cannot shadow a real route.
-   *
-   * This exists because a stale process once went on serving after a deploy,
-   * and the only symptom was one endpoint 404ing: the route had been added
-   * after the build that was still running. There was no way to ask the bot
-   * how old it was.
-   */
-  app.get('/api/health', (_req, res) => {
-    res.json({
-      startedAt: startedAt.toISOString(),
-      routes: listRoutes(app),
-    });
   });
 
   const port = config.apiPort || 3001;
