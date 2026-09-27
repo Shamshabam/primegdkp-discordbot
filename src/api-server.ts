@@ -6,6 +6,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
+import { buildMissingMessage } from './missing-roster.js';
 import { refreshSignupMessage } from './signup-service.js';
 import { buildRosterButtons, rosterAttachment } from './roster-service.js';
 import type { SignupStore } from './store/signup-store.js';
@@ -32,6 +33,26 @@ const updateInstanceSchema = z.object({
   scheduledFor: z.string().optional(),
 }).refine((v) => v.title !== undefined || v.scheduledFor !== undefined, {
   message: 'Nothing to change',
+});
+
+/**
+ * What the roster is still short of. Sent as the positions rather than as a
+ * finished sentence: the icons are class emoji this bot uploaded, and the
+ * website has no way of knowing what they are called.
+ */
+const postMissingSchema = z.object({
+  channelId: z.string(),
+  // The message to correct. Absent the first time, and then kept by the
+  // website, so re-pushing a roster edits what is already in the channel
+  // instead of leaving another wrong copy of it above the new one.
+  messageId: z.string().optional(),
+  raidTitle: z.string().max(200),
+  missingSlots: z.array(z.object({
+    label: z.string().max(50),
+    count: z.number().int().min(0).max(99),
+    note: z.string().max(200).optional(),
+  })),
+  extraMessage: z.string().max(1500).optional(),
 });
 
 const postMessageSchema = z.object({
@@ -318,6 +339,52 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     } catch (err) {
       console.error('Failed to post roster:', err);
       res.status(500).json({ error: 'Failed to post roster' });
+    }
+  });
+
+  /**
+   * Post or correct the "still missing" message under a roster.
+   *
+   * Edits where it can. A roster gets pushed again every time somebody is
+   * moved, and each push used to leave another copy in the channel with the
+   * older ones still asking for people who had since been found.
+   */
+  app.post('/api/post-missing', async (req, res) => {
+    const parsed = postMissingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+
+    const { channelId, messageId, raidTitle, missingSlots, extraMessage } = parsed.data;
+
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) {
+        res.status(400).json({ error: 'Invalid text channel' });
+        return;
+      }
+
+      const content = buildMissingMessage({ raidTitle, missingSlots, extraMessage });
+
+      if (messageId) {
+        try {
+          const existing = await (channel as TextChannel).messages.fetch(messageId);
+          await existing.edit({ content });
+          res.json({ messageId });
+
+          return;
+        } catch {
+          // Deleted by hand, or old enough to be gone. Saying so would only
+          // stop a roster being pushed, so it is posted afresh instead.
+        }
+      }
+
+      const message = await (channel as TextChannel).send({ content });
+      res.json({ messageId: message.id });
+    } catch (err) {
+      console.error('Failed to post missing roster message:', err);
+      res.status(500).json({ error: 'Failed to post missing roster message' });
     }
   });
 

@@ -7,6 +7,7 @@ import {
   TextInputStyle,
   type ButtonInteraction,
 } from 'discord.js';
+import { guildDisplayName } from '../discord-names.js';
 import { extractErrorMessage } from '../error.js';
 import { key } from '../roster.js';
 import { refreshRosterMessage } from '../roster-service.js';
@@ -139,6 +140,11 @@ export async function handleButton(interaction: ButtonInteraction, store: Signup
         eventInstanceId: instanceId,
         discordUserId: interaction.user.id,
         discordUsername: interaction.user.username,
+        // Marking yourself absent is a signup like any other, and it was
+        // the one that did not record what this server calls you - so a
+        // name that read as a nickname everywhere else reverted to a
+        // Discord username the moment somebody pressed Absence.
+        discordNickname: guildDisplayName(interaction),
         role: 'Absence',
         className: existing.className,
         spec: existing.spec,
