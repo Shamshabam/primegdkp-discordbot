@@ -8,10 +8,6 @@
 # of that is one endpoint answering 404 while every other one works, which is a
 # miserable thing to debug.
 #
-# Run this, then restart the "Discord Bot" process in Forge. It does not restart
-# anything itself: the process is Forge's to manage, and a script that killed it
-# would leave the bot down if the build below failed.
-#
 # Usage, from anywhere:
 #     /home/forge/primegdkp-discordbot/bin/deploy.sh
 
@@ -20,8 +16,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "==> Pulling"
-# --ff-only so a dirty or diverged checkout stops here rather than being
-# merged into something nobody has ever run.
+# --ff-only so a dirty or diverged checkout stops here rather than being merged
+# into something nobody has ever run. package-lock.json is the one that goes
+# out of step, because installing on the server rewrites it - and the lockfile
+# the repository holds is the one that was tested.
+git checkout -- package-lock.json 2>/dev/null || true
 git pull --ff-only
 
 echo "==> Installing"
@@ -32,8 +31,17 @@ npm ci
 echo "==> Building"
 npm run build
 
+# Only now. Everything above exits non-zero on failure and set -e stops the
+# script, so a build that does not compile leaves the running bot alone rather
+# than taking it down and putting nothing back.
+echo "==> Restarting"
+# Supervisor owns the process and restarts it when it dies, so stopping it is
+# how it gets restarted. No match means it was not running, which is not a
+# failure - it will be started by supervisor either way.
+pkill -f "$(pwd)/dist/index.js" || true
+
 echo
 echo "Built $(git rev-parse --short HEAD) - $(git log -1 --pretty=%s)"
 echo
-echo "Now restart the Discord Bot process in Forge, then check it came back on this build:"
+echo "Give it a few seconds, then check it came back on this build:"
 echo "    curl -s localhost:3001/api/health"
