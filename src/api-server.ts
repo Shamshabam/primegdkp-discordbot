@@ -521,8 +521,61 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     }
   });
 
+  /**
+   * Which build is answering.
+   *
+   * Unauthenticated on purpose - it says nothing a caller does not already
+   * know - and listed last so it cannot shadow a real route.
+   *
+   * This exists because a stale process once went on serving after a deploy,
+   * and the only symptom was one endpoint 404ing: the route had been added
+   * after the build that was still running. There was no way to ask the bot
+   * how old it was.
+   */
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      startedAt: startedAt.toISOString(),
+      routes: listRoutes(app),
+    });
+  });
+
   const port = config.apiPort || 3001;
-  app.listen(port, '127.0.0.1', () => {
+
+  const server = app.listen(port, '127.0.0.1', () => {
     console.log(`API server listening on 127.0.0.1:${port}`);
   });
+
+  /**
+   * Die rather than let an older process keep the port.
+   *
+   * Without this a restart that cannot bind - because the previous bot is
+   * still holding the port - logged nothing anybody read and left the old
+   * build serving. A deploy then looked like it had worked while the running
+   * code was from before it, which is worse than being down.
+   */
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(
+      error.code === 'EADDRINUSE'
+        ? `Port ${port} is already taken - another bot process is still running. Stop it and start again.`
+        : `API server could not start: ${error.message}`,
+    );
+
+    process.exit(1);
+  });
+}
+
+/** When this process came up, so /api/health can say how old the build is. */
+const startedAt = new Date();
+
+/**
+ * The paths this build serves, so a deploy can be told apart from the one
+ * before it without reading the source.
+ */
+function listRoutes(app: express.Express): string[] {
+    const stack = (app as unknown as { router?: { stack?: unknown[] } }).router?.stack ?? [];
+
+    return stack
+        .map((layer) => (layer as { route?: { path?: string } }).route?.path)
+        .filter((path): path is string => typeof path === 'string')
+        .sort();
 }
