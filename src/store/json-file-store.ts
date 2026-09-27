@@ -192,6 +192,20 @@ export class JsonFileStore implements SignupStore {
     });
   }
 
+  async listInstancesWithCounts(guildId: string): Promise<Array<{ instance: EventInstance; signups: number }>> {
+    const data = await this.read();
+
+    const counts = new Map<string, number>();
+
+    for (const signup of data.signups) {
+      counts.set(signup.eventInstanceId, (counts.get(signup.eventInstanceId) ?? 0) + 1);
+    }
+
+    return data.instances
+      .filter((instance) => instance.guildId === guildId)
+      .map((instance) => ({ instance, signups: counts.get(instance.id) ?? 0 }));
+  }
+
   async listSignups(eventInstanceId: string): Promise<Signup[]> {
     const data = await this.read();
     return data.signups.filter((s) => s.eventInstanceId === eventInstanceId);

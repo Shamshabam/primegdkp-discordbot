@@ -24,6 +24,13 @@ export interface SignupStore {
   /** Every event still taking signups, so their messages can be brought up to date. */
   listOpenInstances(): Promise<EventInstance[]>;
 
+  /**
+   * Every event posted to a guild, open or closed, with how many have signed
+   * up to each. The calendar shows the lot rather than only what is still
+   * taking signups.
+   */
+  listInstancesWithCounts(guildId: string): Promise<Array<{ instance: EventInstance; signups: number }>>;
+
   /** The roster posted for an event, if one has been. */
   getRoster(instanceId: string): Promise<PostedRoster | undefined>;
 

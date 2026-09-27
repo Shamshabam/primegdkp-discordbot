@@ -591,16 +591,24 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
       return;
     }
     try {
-      const storePath = await import('node:fs/promises');
-      const { join } = await import('node:path');
-      const raw = await storePath.readFile(join(process.cwd(), 'data', 'store.json'), 'utf-8');
-      const data = JSON.parse(raw);
-      const instances = (data.instances || []).filter((i: EventInstance) => i.guildId === guildId);
-      const instanceIds = new Set(instances.map((i: EventInstance) => i.id));
-      const signups = (data.signups || []).filter((s: { eventInstanceId: string }) => instanceIds.has(s.eventInstanceId));
-      res.json({ instances, signups });
-    } catch {
-      res.json({ instances: [], signups: [] });
+      // Through the store. This used to read data/store.json off disk by a
+      // path of its own, behind the back of the thing that owns the file -
+      // so it answered from whatever happened to be at that path, and an
+      // empty or unreadable file came back as "no signups" rather than as an
+      // error anybody would notice.
+      const rows = await store.listInstancesWithCounts(guildId);
+
+      res.json({
+        instances: rows.map((row) => ({ ...row.instance, signupCount: row.signups })),
+        // Kept for callers that count them themselves. The count above is the
+        // one to trust: it is taken where the signups are.
+        signups: (await Promise.all(
+          rows.map((row) => store.listSignups(row.instance.id)),
+        )).flat(),
+      });
+    } catch (err) {
+      console.error('Failed to list instances:', err);
+      res.status(500).json({ error: 'Failed to list instances' });
     }
   });
 
