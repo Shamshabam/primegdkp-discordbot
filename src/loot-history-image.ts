@@ -1,7 +1,8 @@
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, type Image } from '@napi-rs/canvas';
 import { AttachmentBuilder } from 'discord.js';
 import { FONT, WOW_CLASS_COLORS } from './roster.js';
 import { formatGold, type LootHistoryPost } from './loot-history-post.js';
+import { loadItemIcons } from './item-icons.js';
 
 /**
  * A raid's loot drawn as a picture, the way the website lists it.
@@ -32,7 +33,9 @@ const ROW_STRIPE = '#161a22';
 
 const PADDING = 16;
 const HEADER_H = 46;
-const ROW_H = 24;
+const ROW_H = 26;
+const ICON = 18;
+const ICON_GAP = 7;
 const GOLD_W = 90;
 const BUYER_W = 150;
 const MIN_ITEM_W = 260;
@@ -53,13 +56,25 @@ function itemColumnWidth(items: LootHistoryPost['items']): number {
     0,
   );
 
-  return Math.max(MIN_ITEM_W, Math.ceil(widest) + 16);
+  return Math.max(MIN_ITEM_W, Math.ceil(widest) + ICON + ICON_GAP + 16);
 }
 
-export function renderLootHistory(post: LootHistoryPost): Buffer {
-  const itemW = itemColumnWidth(post.items);
+/**
+ * The sales, dearest first.
+ *
+ * What a raid made is read down from the top - the four-figure drops are the
+ * ones anybody asks about, and in the order they happened to be entered they
+ * are scattered through forty rows of consumable-priced offhands.
+ */
+export function sortedByPrice(items: LootHistoryPost['items']): LootHistoryPost['items'] {
+  return [...items].sort((a, b) => b.gold - a.gold);
+}
+
+export function renderLootHistory(post: LootHistoryPost, icons: Map<string, Image> = new Map()): Buffer {
+  const items = sortedByPrice(post.items);
+  const itemW = itemColumnWidth(items);
   const width = PADDING * 2 + itemW + BUYER_W + GOLD_W;
-  const height = PADDING * 2 + HEADER_H + Math.max(1, post.items.length) * ROW_H;
+  const height = PADDING * 2 + HEADER_H + Math.max(1, items.length) * ROW_H;
 
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
@@ -81,14 +96,14 @@ export function renderLootHistory(post: LootHistoryPost): Buffer {
     PADDING + 32,
   );
 
-  if (post.items.length === 0) {
+  if (items.length === 0) {
     ctx.fillStyle = SUBTLE;
     ctx.fillText('Nothing was sold.', PADDING, PADDING + HEADER_H + ROW_H / 2);
 
     return canvas.toBuffer('image/png');
   }
 
-  post.items.forEach((line, i) => {
+  items.forEach((line, i) => {
     const top = PADDING + HEADER_H + i * ROW_H;
     const middle = top + ROW_H / 2;
 
@@ -99,10 +114,19 @@ export function renderLootHistory(post: LootHistoryPost): Buffer {
       ctx.fillRect(PADDING - 6, top, width - PADDING * 2 + 12, ROW_H);
     }
 
+    const icon = line.icon ? icons.get(line.icon) : undefined;
+
+    if (icon) {
+      ctx.drawImage(icon, PADDING, middle - ICON / 2, ICON, ICON);
+    }
+
+    // Indented whether or not the icon arrived, so one that could not be
+    // fetched leaves a gap rather than knocking its row out of line with the
+    // rest of the column.
     ctx.font = `13px "${FONT}"`;
     ctx.textAlign = 'left';
     ctx.fillStyle = QUALITY_COLORS[line.quality ?? 4] ?? QUALITY_COLORS[4];
-    ctx.fillText(line.item, PADDING, middle);
+    ctx.fillText(line.item, PADDING + ICON + ICON_GAP, middle);
 
     ctx.fillStyle = (line.className && WOW_CLASS_COLORS[line.className]) || '#c9d1d9';
     ctx.fillText(line.buyer, PADDING + itemW, middle);
@@ -115,7 +139,16 @@ export function renderLootHistory(post: LootHistoryPost): Buffer {
   return canvas.toBuffer('image/png');
 }
 
-/** The picture, ready to hang on a message. */
-export function lootHistoryAttachment(post: LootHistoryPost): AttachmentBuilder {
-  return new AttachmentBuilder(renderLootHistory(post), { name: 'loot-history.png' });
+/**
+ * The picture, ready to hang on a message.
+ *
+ * Fetches the icons first. They are cached on disk after the first raid to
+ * sell an item, and any that cannot be had are simply left out.
+ */
+export async function lootHistoryAttachment(post: LootHistoryPost): Promise<AttachmentBuilder> {
+  const icons = await loadItemIcons(
+    post.items.map((line) => line.icon).filter((name): name is string => !!name),
+  );
+
+  return new AttachmentBuilder(renderLootHistory(post, icons), { name: 'loot-history.png' });
 }

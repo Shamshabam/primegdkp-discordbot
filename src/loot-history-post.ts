@@ -12,6 +12,8 @@ export interface LootLine {
   quality?: number;
   /** What the buyer raids as, for their name's colour. */
   className?: string;
+  /** Wowhead's short name for the item's icon, e.g. "inv_sword_39". */
+  icon?: string;
 }
 
 export interface LootHistoryPost {

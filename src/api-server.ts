@@ -77,6 +77,7 @@ const postLootHistorySchema = z.object({
     gold: z.number().int().min(0),
     quality: z.number().int().min(0).max(6).optional(),
     className: z.string().max(40).optional(),
+    icon: z.string().max(64).optional(),
   })).max(500),
 });
 
@@ -446,7 +447,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
       // underneath it, for searching, and the only thing that achieved was
       // doubling the length of the post and pushing everything else in the
       // channel off the screen. The list is on the website to search.
-      const files = [lootHistoryAttachment(post)];
+      const files = [await lootHistoryAttachment(post)];
 
       if (messageId) {
         try {
