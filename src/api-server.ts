@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import { buildMissingMessage } from './missing-roster.js';
+import { buildLootHistoryEmbed } from './loot-history-post.js';
 import { refreshSignupMessage } from './signup-service.js';
 import { buildRosterButtons, rosterAttachment } from './roster-service.js';
 import type { SignupStore } from './store/signup-store.js';
@@ -55,6 +56,26 @@ const postMissingSchema = z.object({
   extraMessage: z.string().max(1500).optional(),
   // When the raid pulls. The invite and replacement times come off it.
   scheduledFor: z.string().optional(),
+});
+
+/**
+ * A raid's loot, posted when its gold sheet is finalised. Sent as the sales
+ * rather than as a finished block of text, so the bot decides how it reads.
+ */
+const postLootHistorySchema = z.object({
+  channelId: z.string(),
+  // The post to correct. Kept by the website, so finalising a sheet again
+  // after fixing a price edits what is in the channel rather than posting a
+  // second list beside the wrong one.
+  messageId: z.string().optional(),
+  raidName: z.string().max(200),
+  date: z.string().max(60),
+  totalPot: z.number().int().min(0),
+  items: z.array(z.object({
+    item: z.string().max(200),
+    buyer: z.string().max(100),
+    gold: z.number().int().min(0),
+  })).max(500),
 });
 
 const postMessageSchema = z.object({
@@ -387,6 +408,52 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     } catch (err) {
       console.error('Failed to post missing roster message:', err);
       res.status(500).json({ error: 'Failed to post missing roster message' });
+    }
+  });
+
+  /**
+   * Post or correct a raid's loot history.
+   *
+   * Edits where it can, for the same reason the missing-players message does:
+   * a price gets corrected and the sheet finalised again, and two lists in the
+   * channel disagreeing with each other is worse than none.
+   */
+  app.post('/api/post-loot-history', async (req, res) => {
+    const parsed = postLootHistorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body', details: parsed.error.issues });
+      return;
+    }
+
+    const { channelId, messageId, ...post } = parsed.data;
+
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) {
+        res.status(400).json({ error: 'Invalid text channel' });
+        return;
+      }
+
+      const embeds = [buildLootHistoryEmbed(post)];
+
+      if (messageId) {
+        try {
+          const existing = await (channel as TextChannel).messages.fetch(messageId);
+          await existing.edit({ embeds });
+          res.json({ messageId });
+
+          return;
+        } catch {
+          // Deleted by hand, or old enough to be gone. Posted afresh rather
+          // than refusing, which would only stop a sheet being finalised.
+        }
+      }
+
+      const message = await (channel as TextChannel).send({ embeds });
+      res.json({ messageId: message.id });
+    } catch (err) {
+      console.error('Failed to post loot history:', err);
+      res.status(500).json({ error: 'Failed to post loot history' });
     }
   });
 
