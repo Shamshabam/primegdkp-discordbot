@@ -53,6 +53,8 @@ const postMissingSchema = z.object({
     note: z.string().max(200).optional(),
   })),
   extraMessage: z.string().max(1500).optional(),
+  // When the raid pulls. The invite and replacement times come off it.
+  scheduledFor: z.string().optional(),
 });
 
 const postMessageSchema = z.object({
@@ -356,7 +358,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
       return;
     }
 
-    const { channelId, messageId, raidTitle, missingSlots, extraMessage } = parsed.data;
+    const { channelId, messageId, raidTitle, missingSlots, extraMessage, scheduledFor } = parsed.data;
 
     try {
       const channel = await client.channels.fetch(channelId);
@@ -365,7 +367,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         return;
       }
 
-      const content = buildMissingMessage({ raidTitle, missingSlots, extraMessage });
+      const content = buildMissingMessage({ raidTitle, missingSlots, extraMessage, scheduledFor });
 
       if (messageId) {
         try {

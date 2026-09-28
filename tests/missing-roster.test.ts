@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildMissingMessage, emojiForLabel } from '../src/missing-roster.js';
 
 /**
- * The message asking for the people a roster is still short of.
+ * The post that goes under a roster: when to turn up, who is still needed,
+ * anything about this week, then the rules that hold every week.
  *
  * It was built on the website with unicode stand-ins - a shield for a tank, a
  * snowflake for a mage, a bear for a druid - because the website has no way of
@@ -39,9 +40,31 @@ describe('the message', () => {
         { label: 'Mage', count: 3, note: '' },
     ];
 
+    const pull = '2026-10-04T14:30:00.000Z';
+
+    it('opens by naming the raid to everybody', () => {
+        const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots });
+
+        expect(said.startsWith('@everyone\n**Roster for "Naxx"**')).toBe(true);
+    });
+
+    it('says when invites, replacements and the pull are', () => {
+        const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots, scheduledFor: pull });
+
+        expect(said).toContain('**Invites**');
+        expect(said).toContain('**Replacements**');
+        expect(said).toContain('**Pull**');
+    });
+
+    it('leaves the times out rather than guessing when it has no start', () => {
+        const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots });
+
+        expect(said).not.toContain('Invites');
+    });
+
     it('counts everybody it is short of', () => {
         expect(buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots }))
-            .toContain('missing **11** people');
+            .toContain('# Still missing 11');
     });
 
     it('names each position with its icon and its note', () => {
@@ -63,18 +86,28 @@ describe('the message', () => {
     it('says a full roster is full rather than short of nobody', () => {
         const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: [] });
 
-        expect(said).toContain('The roster is full.');
-        expect(said).not.toContain('missing **0**');
+        expect(said).toContain('# The roster is full');
+        expect(said).not.toContain('Still missing 0');
     });
 
-    it('puts the extra message underneath', () => {
+    it('always ends with what every raider has to bring', () => {
+        // True of every raid, and a rule nobody is reminded of is one somebody
+        // turns up without.
+        const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots });
+
+        expect(said).toContain('Full worldbuffs + consumables required (Including flask)');
+        expect(said).toContain('minimum frost resistance of 100 as Melee, and 150 as Caster');
+        expect(said.trimEnd().endsWith('Install and update Gargul addon to be able to bid on items.')).toBe(true);
+    });
+
+    it('puts what was written this week above the standing rules', () => {
         const said = buildMissingMessage({
             raidTitle: 'Naxx',
             missingSlots: slots,
             extraMessage: 'Token buyers are always welcome',
         });
 
-        expect(said.trimEnd().endsWith('Token buyers are always welcome')).toBe(true);
+        expect(said.indexOf('Token buyers')).toBeLessThan(said.indexOf('Full worldbuffs'));
     });
 
     it('does not leave a gap for an extra message that is only spaces', () => {
@@ -84,6 +117,21 @@ describe('the message', () => {
             extraMessage: '   \n ',
         });
 
-        expect(said.trimEnd()).toBe(said);
+        expect(said).not.toContain('\n\n\n');
+    });
+
+    it('reads in the order it is meant to be read', () => {
+        const said = buildMissingMessage({
+            raidTitle: 'Naxx',
+            missingSlots: slots,
+            scheduledFor: pull,
+            extraMessage: 'Invites are on time tonight',
+        });
+
+        const order = ['Roster for', '**Invites**', '# Still missing', 'on time tonight', 'Full worldbuffs'];
+
+        expect(order.map((part) => said.indexOf(part))).toEqual(
+            [...order.map((part) => said.indexOf(part))].sort((a, b) => a - b),
+        );
     });
 });

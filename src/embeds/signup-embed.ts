@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import type { EventInstance, Signup } from '../types.js';
 import { classDisplayOrder, findClass, findSpec, getCombatRole } from '../wow-classes.js';
+import { timingLines } from '../raid-timings.js';
 
 export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): EmbedBuilder {
   const mainSignups = signups.filter((s) => s.role !== 'Absence');
@@ -47,6 +48,15 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
     value: `🛡️ **${tankCount}** Tanks  ·  💚 **${healerCount}** Healers  ·  ⚔️ **${dpsCount}** DPS${douseSummary}`,
     inline: false,
   });
+
+  // When to turn up, worked back from the pull. Every raid runs to the same
+  // clock, so it is worked out rather than typed in - and the time invites go
+  // out is what the channel asks every week.
+  const timings = timingLines(instance.scheduledFor);
+
+  if (timings !== '') {
+    embed.addFields({ name: '\u200b', value: timings, inline: false });
+  }
 
   // Split by role first, then by class inside each - a Tank divider with the
   // warriors, druids and paladins who signed as tanks under it, and the same

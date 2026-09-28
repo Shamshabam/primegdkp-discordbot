@@ -1,4 +1,5 @@
 import { WOW_CLASSES } from './wow-classes.js';
+import { timingLines } from './raid-timings.js';
 
 /** One position the raid is still short of. */
 export interface MissingSlot {
@@ -11,7 +12,21 @@ export interface MissingMessage {
   raidTitle: string;
   missingSlots: MissingSlot[];
   extraMessage?: string;
+  /** When the raid pulls, which the invite and replacement times come off. */
+  scheduledFor?: string;
 }
+
+/**
+ * What every raider has to bring, whichever raid it is.
+ *
+ * On every roster because it is true of every raid, and a rule nobody is
+ * reminded of is one somebody turns up without.
+ */
+const REQUIREMENTS = [
+  'Full worldbuffs + consumables required (Including flask)',
+  'Bring a minimum frost resistance of 100 as Melee, and 150 as Caster.',
+  'Install and update Gargul addon to be able to bid on items.',
+];
 
 /**
  * Which icon stands for each position asked for.
@@ -52,34 +67,54 @@ export function emojiForLabel(label: string): string {
 }
 
 /**
- * What still needs filling, as it reads in the channel.
+ * The whole post that goes under a roster.
  *
  * Built here rather than on the website because the icons are the bot's: it
  * knows what its emoji are called and the website does not.
+ *
+ * Written in the order it is read: when to turn up, who is still needed, then
+ * anything about this week, then the rules that hold for every week.
  */
-export function buildMissingMessage({ raidTitle, missingSlots, extraMessage }: MissingMessage): string {
+export function buildMissingMessage({
+  raidTitle,
+  missingSlots,
+  extraMessage,
+  scheduledFor,
+}: MissingMessage): string {
+  const sections: string[] = [`@everyone\n**Roster for "${raidTitle}"**`];
+
+  const timings = scheduledFor ? timingLines(scheduledFor) : '';
+
+  if (timings !== '') {
+    sections.push(timings);
+  }
+
   const wanted = missingSlots.filter((slot) => slot.count > 0);
-  const total = wanted.reduce((sum, slot) => sum + slot.count, 0);
 
-  // A full roster says so rather than announcing that it is short of nobody,
-  // which is what counting an empty list came out as.
-  const lines = [
-    total > 0
-      ? `@everyone\n**Roster for "${raidTitle}"**\nCurrently missing **${total}** people for the raid\n`
-      : `@everyone\n**Roster for "${raidTitle}"**\nThe roster is full.\n`,
-  ];
+  if (wanted.length > 0) {
+    const total = wanted.reduce((sum, slot) => sum + slot.count, 0);
 
-  for (const slot of wanted) {
-    const note = slot.note ? ` (${slot.note})` : '';
-    lines.push(`${emojiForLabel(slot.label)} **${slot.count}x** ${slot.label}${note}`);
+    sections.push([
+      `# Still missing ${total}`,
+      ...wanted.map((slot) => {
+        const note = slot.note ? ` (${slot.note})` : '';
+
+        return `${emojiForLabel(slot.label)} **${slot.count}x** ${slot.label}${note}`;
+      }),
+    ].join('\n'));
+  } else {
+    // A full roster says so rather than announcing that it is short of nobody,
+    // which is what counting an empty list came out as.
+    sections.push('# The roster is full');
   }
 
   const extra = (extraMessage ?? '').trim();
 
   if (extra !== '') {
-    lines.push('');
-    lines.push(extra);
+    sections.push(extra);
   }
 
-  return lines.join('\n');
+  sections.push(REQUIREMENTS.join('\n'));
+
+  return sections.join('\n\n');
 }
