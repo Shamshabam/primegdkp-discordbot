@@ -10,7 +10,7 @@ import type { RosterGroups, RosterState } from './types.js';
  * a Windows laptop meant a bitmap face and on a bare server could mean none at
  * all. Registering one here makes the roster come out the same everywhere.
  */
-const FONT = 'DejaVu Sans';
+export const FONT = 'DejaVu Sans';
 
 function registerFont(): void {
   const require = createRequire(import.meta.url);
@@ -22,7 +22,7 @@ function registerFont(): void {
 
 registerFont();
 
-const WOW_CLASS_COLORS: Record<string, string> = {
+export const WOW_CLASS_COLORS: Record<string, string> = {
   Warrior: '#C79C6E',
   Paladin: '#F58CBA',
   Hunter: '#ABD473',

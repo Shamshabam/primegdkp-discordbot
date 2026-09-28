@@ -5,6 +5,15 @@ export interface LootLine {
   item: string;
   buyer: string;
   gold: number;
+  /**
+   * The item's quality, as the game numbers them - 4 is epic.
+   *
+   * Absent for an item nothing is known about, which is drawn as an epic
+   * rather than as poor: most of what sells in a GDKP is.
+   */
+  quality?: number;
+  /** What the buyer raids as, for their name's colour. */
+  className?: string;
 }
 
 export interface LootHistoryPost {

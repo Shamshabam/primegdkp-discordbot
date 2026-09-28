@@ -8,6 +8,7 @@ import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import { buildMissingMessage } from './missing-roster.js';
 import { buildLootHistoryEmbed } from './loot-history-post.js';
+import { lootHistoryAttachment } from './loot-history-image.js';
 import { refreshSignupMessage } from './signup-service.js';
 import { buildRosterButtons, rosterAttachment } from './roster-service.js';
 import type { SignupStore } from './store/signup-store.js';
@@ -75,6 +76,8 @@ const postLootHistorySchema = z.object({
     item: z.string().max(200),
     buyer: z.string().max(100),
     gold: z.number().int().min(0),
+    quality: z.number().int().min(0).max(6).optional(),
+    className: z.string().max(40).optional(),
   })).max(500),
 });
 
@@ -434,12 +437,19 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         return;
       }
 
+      // Drawn rather than written. Discord will not colour text in a message,
+      // and its one coloured code block has eight colours - so an epic and a
+      // rare come out the same blue, and a warrior and a rogue the same
+      // yellow. Those colours are the point: the quality is read before the
+      // name. The embed goes with it as the part that is still searchable.
+      const files = [lootHistoryAttachment(post)];
       const embeds = [buildLootHistoryEmbed(post)];
 
       if (messageId) {
         try {
           const existing = await (channel as TextChannel).messages.fetch(messageId);
-          await existing.edit({ embeds });
+
+          await existing.edit({ embeds, files });
           res.json({ messageId });
 
           return;
@@ -449,7 +459,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         }
       }
 
-      const message = await (channel as TextChannel).send({ embeds });
+      const message = await (channel as TextChannel).send({ embeds, files });
       res.json({ messageId: message.id });
     } catch (err) {
       console.error('Failed to post loot history:', err);
