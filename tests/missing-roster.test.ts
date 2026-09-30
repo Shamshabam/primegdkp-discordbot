@@ -142,9 +142,11 @@ it('tells a world tour what a world tour needs', () => {
         });
 
         expect(said).toContain('Remember your AQ mounts, douses, ony cloaks and poison resistance elixirs!');
+        expect(said).toContain('Install and update Gargul addon to be able to bid on items.');
+        // The flask line names the tanks it applies to, which the Naxx one does not.
+        expect(said).toContain('Full worldbuffs + consumables required (Including flask for tank 1+2+3)');
         // Frost resistance is a Naxxramas rule and says nothing to this raid.
         expect(said).not.toContain('frost resistance');
-        expect(said).not.toContain('Gargul');
     });
 
     it('tells Naxxramas what Naxxramas needs', () => {

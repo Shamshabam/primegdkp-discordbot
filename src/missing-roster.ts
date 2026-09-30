@@ -34,6 +34,8 @@ const REQUIREMENTS: Record<string, string[]> = {
   ],
   world_tour: [
     'Remember your AQ mounts, douses, ony cloaks and poison resistance elixirs!',
+    'Install and update Gargul addon to be able to bid on items.',
+    'Full worldbuffs + consumables required (Including flask for tank 1+2+3)',
   ],
 };
 
