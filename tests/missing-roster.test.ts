@@ -134,4 +134,34 @@ describe('the message', () => {
             [...order.map((part) => said.indexOf(part))].sort((a, b) => a - b),
         );
     });
+it('tells a world tour what a world tour needs', () => {
+        const said = buildMissingMessage({
+            raidTitle: 'World Tour',
+            missingSlots: slots,
+            raidType: 'world_tour',
+        });
+
+        expect(said).toContain('Remember your AQ mounts, douses, ony cloaks and poison resistance elixirs!');
+        // Frost resistance is a Naxxramas rule and says nothing to this raid.
+        expect(said).not.toContain('frost resistance');
+        expect(said).not.toContain('Gargul');
+    });
+
+    it('tells Naxxramas what Naxxramas needs', () => {
+        const said = buildMissingMessage({
+            raidTitle: 'Naxx',
+            missingSlots: slots,
+            raidType: 'naxxramas',
+        });
+
+        expect(said).toContain('frost resistance');
+        expect(said).not.toContain('AQ mounts');
+    });
+
+    it('falls back to the Naxxramas rules for a raid it has not been taught', () => {
+        // Far more likely to be a Naxx run than to want no requirements at all.
+        const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots });
+
+        expect(said).toContain('Full worldbuffs');
+    });
 });

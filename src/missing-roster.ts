@@ -14,19 +14,39 @@ export interface MissingMessage {
   extraMessage?: string;
   /** When the raid pulls, which the invite and replacement times come off. */
   scheduledFor?: string;
+  /** Which raid it is, which decides what people are told to bring. */
+  raidType?: string | null;
 }
 
 /**
- * What every raider has to bring, whichever raid it is.
+ * What raiders are told to bring.
  *
- * On every roster because it is true of every raid, and a rule nobody is
- * reminded of is one somebody turns up without.
+ * On every roster, because a rule nobody is reminded of is one somebody turns
+ * up without - but not the same rule for every raid. Naxxramas wants frost
+ * resistance and a bidding addon; a world tour wants what its own bosses need,
+ * and telling that raid about frost resistance tells them nothing.
  */
-const REQUIREMENTS = [
-  'Full worldbuffs + consumables required (Including flask)',
-  'Bring a minimum frost resistance of 100 as Melee, and 150 as Caster.',
-  'Install and update Gargul addon to be able to bid on items.',
-];
+const REQUIREMENTS: Record<string, string[]> = {
+  naxxramas: [
+    'Full worldbuffs + consumables required (Including flask)',
+    'Bring a minimum frost resistance of 100 as Melee, and 150 as Caster.',
+    'Install and update Gargul addon to be able to bid on items.',
+  ],
+  world_tour: [
+    'Remember your AQ mounts, douses, ony cloaks and poison resistance elixirs!',
+  ],
+};
+
+/**
+ * The lines for a raid.
+ *
+ * Anything the list does not name falls back to the Naxxramas one: a raid
+ * nobody has taught this about is far more likely to be a Naxx run than to
+ * want no requirements at all.
+ */
+export function requirementsFor(raidType?: string | null): string[] {
+  return REQUIREMENTS[raidType ?? ''] ?? REQUIREMENTS.naxxramas;
+}
 
 /**
  * Which icon stands for each position asked for.
@@ -80,6 +100,7 @@ export function buildMissingMessage({
   missingSlots,
   extraMessage,
   scheduledFor,
+  raidType,
 }: MissingMessage): string {
   const sections: string[] = [`@everyone\n**Roster for "${raidTitle}"**`];
 
@@ -114,7 +135,7 @@ export function buildMissingMessage({
     sections.push(extra);
   }
 
-  sections.push(REQUIREMENTS.join('\n'));
+  sections.push(requirementsFor(raidType).join('\n'));
 
   return sections.join('\n\n');
 }
