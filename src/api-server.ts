@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Config } from './config.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import { buildMissingMessage } from './missing-roster.js';
+import { MemberListUnavailable, membersWithRoles } from './role-members.js';
 import { lootHistoryAttachment } from './loot-history-image.js';
 import { refreshSignupMessage } from './signup-service.js';
 import { buildRosterButtons, rosterAttachment } from './roster-service.js';
@@ -58,6 +59,11 @@ const postMissingSchema = z.object({
   scheduledFor: z.string().optional(),
   // Which raid it is, which decides what people are told to bring.
   raidType: z.string().max(50).optional(),
+  // Who to message about this roster, named at the bottom of the post.
+  contacts: z.array(z.object({
+    id: z.string().regex(/^\d{5,25}$/),
+    name: z.string().max(100),
+  })).max(10).optional(),
 });
 
 /**
@@ -384,7 +390,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
       return;
     }
 
-    const { channelId, messageId, raidTitle, missingSlots, extraMessage, scheduledFor, raidType } = parsed.data;
+    const { channelId, messageId, raidTitle, missingSlots, extraMessage, scheduledFor, raidType, contacts } = parsed.data;
 
     try {
       const channel = await client.channels.fetch(channelId);
@@ -393,12 +399,16 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         return;
       }
 
-      const content = buildMissingMessage({ raidTitle, missingSlots, extraMessage, scheduledFor, raidType });
+      const content = buildMissingMessage({ raidTitle, missingSlots, extraMessage, scheduledFor, raidType, contacts });
+
+      // @everyone still calls the raid; the people named as contacts are
+      // shown as tags to tap, not pinged every time a roster goes out.
+      const allowedMentions = { parse: ['everyone' as const] };
 
       if (messageId) {
         try {
           const existing = await (channel as TextChannel).messages.fetch(messageId);
-          await existing.edit({ content });
+          await existing.edit({ content, allowedMentions });
           res.json({ messageId });
 
           return;
@@ -408,7 +418,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         }
       }
 
-      const message = await (channel as TextChannel).send({ content });
+      const message = await (channel as TextChannel).send({ content, allowedMentions });
       res.json({ messageId: message.id });
     } catch (err) {
       console.error('Failed to post missing roster message:', err);
@@ -526,6 +536,35 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     } catch (err) {
       console.error('Failed to update message:', err);
       res.status(500).json({ error: 'Failed to update message' });
+    }
+  });
+
+  /**
+   * Everybody in the server holding one of the named roles, for the website to
+   * pick roster contacts from. ?roles=Management,Host
+   */
+  app.get('/api/role-members/:guildId', async (req, res) => {
+    const roleNames = String(req.query.roles ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name !== '')
+      .slice(0, 10);
+
+    if (roleNames.length === 0) {
+      res.status(400).json({ error: 'roles query parameter is required' });
+      return;
+    }
+
+    try {
+      res.json(await membersWithRoles(client, req.params.guildId, roleNames));
+    } catch (err) {
+      if (err instanceof MemberListUnavailable) {
+        res.status(503).json({ error: err.message });
+        return;
+      }
+
+      console.error('Failed to list role members:', err);
+      res.status(500).json({ error: 'Failed to list role members' });
     }
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMissingMessage, emojiForLabel } from '../src/missing-roster.js';
+import { buildMissingMessage, contactLine, emojiForLabel } from '../src/missing-roster.js';
 
 /**
  * The post that goes under a roster: when to turn up, who is still needed,
@@ -165,5 +165,34 @@ it('tells a world tour what a world tour needs', () => {
         const said = buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots });
 
         expect(said).toContain('Full worldbuffs');
+    });
+});
+
+describe('who to message', () => {
+    const base = { raidTitle: 'Friday World Tour', missingSlots: [] };
+
+    it('names one contact as a tag', () => {
+        expect(contactLine([{ id: '111111', name: 'Sham' }])).toBe('Message <@111111> for questions regarding this raid');
+    });
+
+    it('joins several with commas and a final or', () => {
+        expect(contactLine([
+            { id: '111111', name: 'Sham' },
+            { id: '222222', name: 'Nøjern' },
+            { id: '333333', name: 'Orleanth' },
+        ])).toBe('Message <@111111>, <@222222> or <@333333> for questions regarding this raid');
+    });
+
+    it('puts the line at the very bottom of the post', () => {
+        const message = buildMissingMessage({
+            ...base,
+            contacts: [{ id: '111111', name: 'Sham' }, { id: '222222', name: 'Nøjern' }],
+        });
+
+        expect(message.endsWith('Message <@111111> or <@222222> for questions regarding this raid')).toBe(true);
+    });
+
+    it('leaves the line out when nobody is picked', () => {
+        expect(buildMissingMessage(base)).not.toContain('for questions regarding this raid');
     });
 });

@@ -16,6 +16,35 @@ export interface MissingMessage {
   scheduledFor?: string;
   /** Which raid it is, which decides what people are told to bring. */
   raidType?: string | null;
+  /** Who to message about this roster, as Discord user ids and names. */
+  contacts?: Contact[];
+}
+
+/** Somebody players can message about a roster. */
+export interface Contact {
+  id: string;
+  name: string;
+}
+
+/**
+ * The line saying who to message about the roster.
+ *
+ * Written as Discord mentions so each name is one tap away from a DM. The
+ * message is sent with user pings switched off, so being named here does not
+ * notify anybody - it is there to be found, not to call them.
+ */
+export function contactLine(contacts: Contact[]): string {
+  const tags = contacts.map((contact) => `<@${contact.id}>`);
+
+  if (tags.length === 0) {
+    return '';
+  }
+
+  const who = tags.length === 1
+    ? tags[0]
+    : `${tags.slice(0, -1).join(', ')} or ${tags[tags.length - 1]}`;
+
+  return `Message ${who} for questions regarding this raid`;
 }
 
 /**
@@ -103,6 +132,7 @@ export function buildMissingMessage({
   extraMessage,
   scheduledFor,
   raidType,
+  contacts = [],
 }: MissingMessage): string {
   const sections: string[] = [`@everyone\n**Roster for "${raidTitle}"**`];
 
@@ -138,6 +168,12 @@ export function buildMissingMessage({
   }
 
   sections.push(requirementsFor(raidType).join('\n'));
+
+  const contact = contactLine(contacts);
+
+  if (contact !== '') {
+    sections.push(contact);
+  }
 
   return sections.join('\n\n');
 }
