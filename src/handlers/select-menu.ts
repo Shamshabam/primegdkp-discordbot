@@ -9,13 +9,11 @@ import {
   TextInputStyle,
   type StringSelectMenuInteraction,
 } from 'discord.js';
-import { guildDisplayName } from '../discord-names.js';
 import { extractErrorMessage } from '../error.js';
 import { refreshSignupMessage } from '../signup-service.js';
 import type { SignupStore } from '../store/signup-store.js';
 import type { Faction } from '../types.js';
 import { classesForFaction, findClass, parseCustomEmoji } from '../wow-classes.js';
-import { getPendingDouse } from './modal-submit.js';
 
 export async function handleSelectMenu(interaction: StringSelectMenuInteraction, store: SignupStore): Promise<void> {
   const parts = interaction.customId.split(':');
@@ -134,33 +132,22 @@ async function handleDouseSelect(interaction: StringSelectMenuInteraction, store
   // custom_id = douse:{instanceId}
   const [, instanceId] = interaction.customId.split(':');
   const douses = parseInt(interaction.values[0], 10);
-  const key = `${instanceId}:${interaction.user.id}`;
-  const pending = getPendingDouse(key);
 
-  if (!pending) {
-    await interaction.update({ content: 'Signup session expired. Please sign up again.', components: [] });
+  // The signup was saved when the character name went in; this only records
+  // the answer, so their place in the signup order is left where it was.
+  const signup = await store.setDouses(instanceId, interaction.user.id, Number.isNaN(douses) ? 0 : douses);
+
+  if (!signup) {
+    await interaction.update({ content: 'You are not signed up for this event any more. Please sign up again.', components: [] });
     return;
   }
 
-  await store.upsertSignup({
-    eventInstanceId: instanceId,
-    discordUserId: interaction.user.id,
-    discordUsername: interaction.user.username,
-    discordNickname: guildDisplayName(interaction),
-    role: pending.role,
-    className: pending.className,
-    spec: pending.spec,
-    characterName: pending.characterName,
-    note: pending.note,
-    douses,
-  });
-
   await refreshSignupMessage(interaction.client, store, instanceId);
 
-  const wowClass = findClass(pending.className);
+  const wowClass = findClass(signup.className);
   const douseStr = douses > 0 ? ` · 🧪 ${douses} douse${douses > 1 ? 's' : ''}` : '';
   await interaction.update({
-    content: `Signed up as **${wowClass?.emoji ?? ''} ${pending.characterName}** (${pending.className} - ${pending.spec}, ${pending.role})${douseStr}.`,
+    content: `Signed up as **${wowClass?.emoji ?? ''} ${signup.characterName}** (${signup.className} - ${signup.spec}, ${signup.role})${douseStr}.`,
     components: [],
   });
 }

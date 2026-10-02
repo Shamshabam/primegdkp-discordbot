@@ -41,6 +41,13 @@ export interface SignupStore {
   setConfirmation(instanceId: string, characterKey: string, answer: 'confirmed' | 'cancelled'): Promise<PostedRoster | undefined>;
 
   upsertSignup(signup: Omit<Signup, 'id' | 'signedUpAt'>): Promise<Signup>;
+
+  /**
+   * Record how many douses somebody has, on a signup that already exists.
+   * Leaves when they signed up alone, so answering the question does not
+   * move them down the signup order. Undefined when there is no signup.
+   */
+  setDouses(eventInstanceId: string, discordUserId: string, douses: number): Promise<Signup | undefined>;
   removeSignup(eventInstanceId: string, discordUserId: string): Promise<void>;
   listSignups(eventInstanceId: string): Promise<Signup[]>;
 }

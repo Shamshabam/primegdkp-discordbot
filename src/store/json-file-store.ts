@@ -159,6 +159,20 @@ export class JsonFileStore implements SignupStore {
     });
   }
 
+  setDouses(eventInstanceId: string, discordUserId: string, douses: number): Promise<Signup | undefined> {
+    return this.mutate(async (data) => {
+      const existing = data.signups.find(
+        (s) => s.eventInstanceId === eventInstanceId && s.discordUserId === discordUserId,
+      );
+
+      if (existing) {
+        existing.douses = douses;
+      }
+
+      return { data, result: existing };
+    });
+  }
+
   upsertSignup(signup: Omit<Signup, 'id' | 'signedUpAt'>): Promise<Signup> {
     return this.mutate(async (data) => {
       const existing = data.signups.find(
