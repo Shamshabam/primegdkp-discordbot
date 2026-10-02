@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { EventInstance, EventTemplate, PostedRoster, Signup } from '../types.js';
+import type { EventInstance, EventTemplate, PostedRoster, Signup, SignupLogEntry } from '../types.js';
 import type { SignupStore } from './signup-store.js';
 
 interface Data {
@@ -10,9 +10,46 @@ interface Data {
   signups: Signup[];
   /** Optional: every file written before rosters existed has none. */
   rosters?: PostedRoster[];
+  /**
+   * Every sign-up, change and sign-off, in the order they happened. Only ever
+   * added to - removing a signup does not remove its history - so who signed
+   * when can always be worked out again. Absent in files written before it.
+   */
+  signupLog?: SignupLogEntry[];
 }
 
-const EMPTY: Data = { templates: [], instances: [], signups: [], rosters: [] };
+const EMPTY: Data = { templates: [], instances: [], signups: [], rosters: [], signupLog: [] };
+
+/**
+ * What a save does to a signup that already exists, or null when it changes
+ * nothing worth recording (the bot filling in a nickname, say).
+ */
+function whatChanged(before: Signup, after: Omit<Signup, 'id' | 'signedUpAt'>): SignupLogEntry['action'] | null {
+  if (after.role === 'Absence' && before.role !== 'Absence') return 'signed_off';
+  if (before.role === 'Absence' && after.role !== 'Absence') return 'signed_up_again';
+
+  const same = before.role === after.role
+    && before.className === after.className
+    && before.spec === after.spec
+    && before.characterName === after.characterName;
+
+  return same ? null : 'changed';
+}
+
+function logSignup(data: Data, signup: Signup, action: SignupLogEntry['action'], at: string): void {
+  data.signupLog ??= [];
+  data.signupLog.push({
+    eventInstanceId: signup.eventInstanceId,
+    discordUserId: signup.discordUserId,
+    discordName: signup.discordNickname ?? signup.discordUsername,
+    characterName: signup.characterName,
+    role: signup.role,
+    className: signup.className,
+    spec: signup.spec,
+    action,
+    at,
+  });
+}
 
 /**
  * File-backed SignupStore. Writes are serialized through `queue` so
@@ -175,11 +212,14 @@ export class JsonFileStore implements SignupStore {
 
   upsertSignup(signup: Omit<Signup, 'id' | 'signedUpAt'>): Promise<Signup> {
     return this.mutate(async (data) => {
+      const now = new Date().toISOString();
       const existing = data.signups.find(
         (s) => s.eventInstanceId === signup.eventInstanceId && s.discordUserId === signup.discordUserId,
       );
 
       if (existing) {
+        const action = whatChanged(existing, signup);
+
         existing.role = signup.role;
         existing.className = signup.className;
         existing.spec = signup.spec;
@@ -187,23 +227,49 @@ export class JsonFileStore implements SignupStore {
         existing.note = signup.note;
         existing.douses = signup.douses;
         existing.discordUsername = signup.discordUsername;
-        existing.signedUpAt = new Date().toISOString();
+        // Kept when the save does not carry one, so a later save cannot
+        // blank it - and written when it does. It used to be dropped here,
+        // so the nickname fill-in re-saved the same people on every redraw.
+        existing.discordNickname = signup.discordNickname ?? existing.discordNickname;
+        // signedUpAt is left alone. It used to be reset on every save, so
+        // editing a signup, signing off, or the bot filling in a nickname
+        // sent the person to the back of the signup numbers.
+
+        if (action) {
+          logSignup(data, existing, action, now);
+        }
+
         return { data, result: existing };
       }
 
-      const created: Signup = { ...signup, id: randomUUID(), signedUpAt: new Date().toISOString() };
+      const created: Signup = { ...signup, id: randomUUID(), signedUpAt: now };
       data.signups.push(created);
+      logSignup(data, created, created.role === 'Absence' ? 'signed_off' : 'signed_up', now);
       return { data, result: created };
     });
   }
 
   removeSignup(eventInstanceId: string, discordUserId: string): Promise<void> {
     return this.mutate(async (data) => {
+      const now = new Date().toISOString();
+
+      for (const signup of data.signups) {
+        if (signup.eventInstanceId === eventInstanceId && signup.discordUserId === discordUserId) {
+          logSignup(data, signup, 'removed', now);
+        }
+      }
+
       data.signups = data.signups.filter(
         (s) => !(s.eventInstanceId === eventInstanceId && s.discordUserId === discordUserId),
       );
       return { data, result: undefined };
     });
+  }
+
+  async listSignupLog(eventInstanceId: string): Promise<SignupLogEntry[]> {
+    const data = await this.read();
+
+    return (data.signupLog ?? []).filter((entry) => entry.eventInstanceId === eventInstanceId);
   }
 
   async listInstancesWithCounts(guildId: string): Promise<Array<{ instance: EventInstance; signups: number }>> {

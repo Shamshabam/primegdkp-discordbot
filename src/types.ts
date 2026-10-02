@@ -60,7 +60,25 @@ export interface Signup {
   characterName: string;
   note?: string;
   douses?: number;
+  /**
+   * When they first signed up for this event. Set once and never moved: the
+   * signup numbers are counted off it, and editing a signup, signing off or
+   * coming back must not send somebody to the back of the list.
+   */
   signedUpAt: string;
+}
+
+/** One thing somebody did to their signup. Kept for good, never edited. */
+export interface SignupLogEntry {
+  eventInstanceId: string;
+  discordUserId: string;
+  discordName?: string;
+  characterName: string;
+  role: string;
+  className: string;
+  spec: string;
+  action: 'signed_up' | 'changed' | 'signed_off' | 'signed_up_again' | 'removed';
+  at: string;
 }
 
 /** One name on the raid roster, as the website's roster builder holds it. */

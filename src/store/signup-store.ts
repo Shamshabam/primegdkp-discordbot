@@ -1,4 +1,4 @@
-import type { EventInstance, EventTemplate, Signup, PostedRoster } from '../types.js';
+import type { EventInstance, EventTemplate, Signup, SignupLogEntry, PostedRoster } from '../types.js';
 
 /**
  * Everything the bot needs to persist. The JSON file implementation lets the
@@ -49,5 +49,8 @@ export interface SignupStore {
    */
   setDouses(eventInstanceId: string, discordUserId: string, douses: number): Promise<Signup | undefined>;
   removeSignup(eventInstanceId: string, discordUserId: string): Promise<void>;
+
+  /** Every sign-up, change and sign-off for an event, oldest first. */
+  listSignupLog(eventInstanceId: string): Promise<SignupLogEntry[]>;
   listSignups(eventInstanceId: string): Promise<Signup[]>;
 }
