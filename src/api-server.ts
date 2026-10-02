@@ -568,6 +568,15 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     }
   });
 
+  /** Every sign-up, change and sign-off for an event, oldest first. */
+  app.get('/api/signup-log/:instanceId', async (req, res) => {
+    try {
+      res.json({ log: await store.listSignupLog(req.params.instanceId) });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch signup log' });
+    }
+  });
+
   app.get('/api/signups/:instanceId', async (req, res) => {
     try {
       const signups = await store.listSignups(req.params.instanceId);
