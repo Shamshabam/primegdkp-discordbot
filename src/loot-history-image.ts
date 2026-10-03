@@ -31,6 +31,14 @@ const HEADER_TEXT = '#e6cc80';
 const SUBTLE = '#7a828f';
 const ROW_STRIPE = '#161a22';
 
+/**
+ * Drawn at twice the size it is laid out in.
+ *
+ * Discord shrinks a tall picture to fit the chat, and at one pixel per pixel
+ * forty rows came out too small to read without opening it.
+ */
+const SCALE = 2;
+
 const PADDING = 16;
 const HEADER_H = 46;
 const ROW_H = 26;
@@ -76,8 +84,10 @@ export function renderLootHistory(post: LootHistoryPost, icons: Map<string, Imag
   const width = PADDING * 2 + itemW + BUYER_W + GOLD_W;
   const height = PADDING * 2 + HEADER_H + Math.max(1, items.length) * ROW_H;
 
-  const canvas = createCanvas(width, height);
+  const canvas = createCanvas(width * SCALE, height * SCALE);
   const ctx = canvas.getContext('2d');
+
+  ctx.scale(SCALE, SCALE);
 
   ctx.fillStyle = BACKGROUND;
   ctx.fillRect(0, 0, width, height);
@@ -88,13 +98,14 @@ export function renderLootHistory(post: LootHistoryPost, icons: Map<string, Imag
   ctx.fillStyle = HEADER_TEXT;
   ctx.fillText(post.raidName, PADDING, PADDING + 12);
 
+  // The pot is what the post is for, so it sits in the heading, not the small print.
+  ctx.textAlign = 'right';
+  ctx.fillText(`Total pot: ${formatGold(post.totalPot)}`, width - PADDING, PADDING + 12);
+  ctx.textAlign = 'left';
+
   ctx.font = `12px "${FONT}"`;
   ctx.fillStyle = SUBTLE;
-  ctx.fillText(
-    `${post.date}  -  Total pot: ${formatGold(post.totalPot)}  -  ${post.items.length} items`,
-    PADDING,
-    PADDING + 32,
-  );
+  ctx.fillText(`${post.date}  -  ${post.items.length} Items`, PADDING, PADDING + 32);
 
   if (items.length === 0) {
     ctx.fillStyle = SUBTLE;
