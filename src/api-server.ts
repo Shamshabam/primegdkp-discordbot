@@ -588,6 +588,9 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
 
       res.json({
         signups: signups.map((s) => ({ ...s, cancelled: answers[key(s.characterName)] === 'cancelled' })),
+        // The answer is kept under the name on the roster, which is not
+        // always the name they signed up with.
+        cancelled: Object.keys(answers).filter((name) => answers[name] === 'cancelled'),
       });
     } catch {
       res.status(500).json({ error: 'Failed to fetch signups' });
