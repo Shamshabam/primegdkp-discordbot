@@ -62,9 +62,9 @@ describe('the message', () => {
         expect(said).not.toContain('Invites');
     });
 
-    it('counts everybody it is short of', () => {
+    it('heads the list without a total', () => {
         expect(buildMissingMessage({ raidTitle: 'Naxx', missingSlots: slots }))
-            .toContain('# Still missing 11');
+            .toContain('# Still missing\n');
     });
 
     it('names each position with its icon and its note', () => {

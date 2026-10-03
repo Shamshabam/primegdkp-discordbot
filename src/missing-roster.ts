@@ -145,10 +145,8 @@ export function buildMissingMessage({
   const wanted = missingSlots.filter((slot) => slot.count > 0);
 
   if (wanted.length > 0) {
-    const total = wanted.reduce((sum, slot) => sum + slot.count, 0);
-
     sections.push([
-      `# Still missing ${total}`,
+      '# Still missing',
       ...wanted.map((slot) => {
         const note = slot.note ? ` (${slot.note})` : '';
 
