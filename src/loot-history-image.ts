@@ -32,12 +32,14 @@ const SUBTLE = '#7a828f';
 const ROW_STRIPE = '#161a22';
 
 /**
- * Drawn at twice the size it is laid out in.
+ * A long list is split into two columns side by side.
  *
- * Discord shrinks a tall picture to fit the chat, and at one pixel per pixel
- * forty rows came out too small to read without opening it.
+ * Discord fits a picture into a box that is wider than it is tall, so one
+ * column of forty rows was shrunk to fit its height and came out too small to
+ * read in the chat. Two columns use the width the chat has to spare.
  */
-const SCALE = 2;
+const SPLIT_ABOVE = 12;
+const COLUMN_GAP = 28;
 
 const PADDING = 16;
 const HEADER_H = 46;
@@ -81,13 +83,14 @@ export function sortedByPrice(items: LootHistoryPost['items']): LootHistoryPost[
 export function renderLootHistory(post: LootHistoryPost, icons: Map<string, Image> = new Map()): Buffer {
   const items = sortedByPrice(post.items);
   const itemW = itemColumnWidth(items);
-  const width = PADDING * 2 + itemW + BUYER_W + GOLD_W;
-  const height = PADDING * 2 + HEADER_H + Math.max(1, items.length) * ROW_H;
+  const columnW = itemW + BUYER_W + GOLD_W;
+  const columns = items.length > SPLIT_ABOVE ? 2 : 1;
+  const rows = Math.max(1, Math.ceil(items.length / columns));
+  const width = PADDING * 2 + columnW * columns + COLUMN_GAP * (columns - 1);
+  const height = PADDING * 2 + HEADER_H + rows * ROW_H;
 
-  const canvas = createCanvas(width * SCALE, height * SCALE);
+  const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
-
-  ctx.scale(SCALE, SCALE);
 
   ctx.fillStyle = BACKGROUND;
   ctx.fillRect(0, 0, width, height);
@@ -115,20 +118,24 @@ export function renderLootHistory(post: LootHistoryPost, icons: Map<string, Imag
   }
 
   items.forEach((line, i) => {
-    const top = PADDING + HEADER_H + i * ROW_H;
+    // Down the first column, then down the second, so it still reads dearest first.
+    const column = Math.floor(i / rows);
+    const row = i % rows;
+    const left = PADDING + column * (columnW + COLUMN_GAP);
+    const top = PADDING + HEADER_H + row * ROW_H;
     const middle = top + ROW_H / 2;
 
     // Banded, because forty rows of three columns are read across and the eye
     // loses the line without something holding it.
-    if (i % 2 === 1) {
+    if (row % 2 === 1) {
       ctx.fillStyle = ROW_STRIPE;
-      ctx.fillRect(PADDING - 6, top, width - PADDING * 2 + 12, ROW_H);
+      ctx.fillRect(left - 6, top, columnW + 12, ROW_H);
     }
 
     const icon = line.icon ? icons.get(line.icon) : undefined;
 
     if (icon) {
-      ctx.drawImage(icon, PADDING, middle - ICON / 2, ICON, ICON);
+      ctx.drawImage(icon, left, middle - ICON / 2, ICON, ICON);
     }
 
     // Indented whether or not the icon arrived, so one that could not be
@@ -137,14 +144,14 @@ export function renderLootHistory(post: LootHistoryPost, icons: Map<string, Imag
     ctx.font = `13px "${FONT}"`;
     ctx.textAlign = 'left';
     ctx.fillStyle = QUALITY_COLORS[line.quality ?? 4] ?? QUALITY_COLORS[4];
-    ctx.fillText(line.item, PADDING + ICON + ICON_GAP, middle);
+    ctx.fillText(line.item, left + ICON + ICON_GAP, middle);
 
     ctx.fillStyle = (line.className && WOW_CLASS_COLORS[line.className]) || '#c9d1d9';
-    ctx.fillText(line.buyer, PADDING + itemW, middle);
+    ctx.fillText(line.buyer, left + itemW, middle);
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#ffd100';
-    ctx.fillText(formatGold(line.gold), width - PADDING, middle);
+    ctx.fillText(formatGold(line.gold), left + columnW, middle);
   });
 
   return canvas.toBuffer('image/png');
