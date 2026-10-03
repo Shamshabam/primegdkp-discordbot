@@ -11,6 +11,7 @@ import { MemberListUnavailable, membersWithRoles } from './role-members.js';
 import { lootHistoryAttachment } from './loot-history-image.js';
 import { refreshSignupMessage } from './signup-service.js';
 import { buildRosterButtons, rosterAttachment } from './roster-service.js';
+import { key } from './roster.js';
 import type { SignupStore } from './store/signup-store.js';
 import { nextOccurrence } from './schedule/next-occurrence.js';
 import type { EventInstance, EventTemplate } from './types.js';
@@ -580,7 +581,14 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
   app.get('/api/signups/:instanceId', async (req, res) => {
     try {
       const signups = await store.listSignups(req.params.instanceId);
-      res.json({ signups });
+      // Cancel signup on the roster message does not touch the signup, so say
+      // here who pressed it - the website crosses them out like a Sign Off.
+      const roster = await store.getRoster(req.params.instanceId);
+      const answers = roster?.confirmations ?? {};
+
+      res.json({
+        signups: signups.map((s) => ({ ...s, cancelled: answers[key(s.characterName)] === 'cancelled' })),
+      });
     } catch {
       res.status(500).json({ error: 'Failed to fetch signups' });
     }
