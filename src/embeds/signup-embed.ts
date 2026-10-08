@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import type { EventInstance, Signup } from '../types.js';
-import { classDisplayOrder, findClass, findSpec, getCombatRole } from '../wow-classes.js';
+import { classCanFill, classDisplayOrder, findClass, findSpec, getCombatRole } from '../wow-classes.js';
 import { timingLines } from '../raid-timings.js';
 
 export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): EmbedBuilder {
@@ -122,7 +122,11 @@ type RoleBucket = 'Tank' | 'Healer' | 'DPS';
  */
 function bucketOf(signup: Signup): RoleBucket {
   if (signup.role === 'Tank' || signup.role === 'Healer' || signup.role === 'DPS') {
-    return signup.role;
+    // Only a role the class can actually fill. A rogue down as a healer or a
+    // warlock as a tank is a slip on the way through the signup, and listing
+    // them there put people on the roster who could not do the job. Every
+    // class can DPS, so that is where they go.
+    return classCanFill(signup.className, signup.role) ? signup.role : 'DPS';
   }
 
   const combatRole = getCombatRole(signup.className, signup.spec);

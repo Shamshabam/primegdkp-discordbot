@@ -154,3 +154,15 @@ export function getCombatRole(className: string, specName: string): CombatRole {
   const spec = findSpec(wowClass, specName);
   return spec?.combatRole ?? 'melee';
 }
+
+/**
+ * Whether any spec of this class can fill the role.
+ *
+ * A rogue cannot heal and a warlock cannot tank, whatever was picked on the
+ * way through the signup. An unknown class is given the benefit of the doubt.
+ */
+export function classCanFill(className: string, role: string): boolean {
+  const wowClass = findClass(className);
+  if (!wowClass) return true;
+  return wowClass.specs.some((spec) => spec.roles.includes(role));
+}

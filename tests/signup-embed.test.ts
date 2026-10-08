@@ -208,3 +208,42 @@ describe('signup embed within Discord limits', () => {
     expect(all.some((f) => f.name.includes('Mage (3)'))).toBe(true);
   });
 });
+
+describe('signup embed lists people under a role their class can fill', () => {
+  /** The name of the bucket header a signup is listed under. */
+  function bucketFor(over: Partial<Signup>): string {
+    const all = fields([signup(over)]);
+    const header = all.find((f) => f.name.includes('—'));
+
+    return header?.name ?? '';
+  }
+
+  it('lists a rogue who picked Healer under DPS', () => {
+    expect(bucketFor({ role: 'Healer', className: 'Rogue', spec: 'Combat' })).toContain('DPS');
+  });
+
+  it('lists a warlock who picked Tank under DPS', () => {
+    expect(bucketFor({ role: 'Tank', className: 'Warlock', spec: 'Destruction' })).toContain('DPS');
+  });
+
+  it('lists a warrior who picked Healer under DPS, whatever their spec', () => {
+    expect(bucketFor({ role: 'Healer', className: 'Warrior', spec: 'Fury' })).toContain('DPS');
+    expect(bucketFor({ role: 'Healer', className: 'Warrior', spec: 'Protection' })).toContain('DPS');
+  });
+
+  it('keeps a role the class can fill, even when the spec picked is another', () => {
+    // A druid can heal, so a Feral who picked Healer is taken at their word.
+    expect(bucketFor({ role: 'Healer', className: 'Druid', spec: 'Feral' })).toContain('HEALERS');
+    expect(bucketFor({ role: 'Tank', className: 'Warrior', spec: 'Fury' })).toContain('TANKS');
+  });
+
+  it('counts them where they are listed', () => {
+    const summary = fields([
+      signup({ role: 'Healer', className: 'Rogue', spec: 'Combat' }),
+      signup({ role: 'Healer', className: 'Priest', spec: 'Holy' }),
+    ]).find((f) => f.value.includes('Tanks'));
+
+    expect(summary?.value).toContain('**1** Healers');
+    expect(summary?.value).toContain('**1** DPS');
+  });
+});
