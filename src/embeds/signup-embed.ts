@@ -68,13 +68,16 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
     { key: 'DPS', header: '⚔️  —  DPS  —' },
   ];
 
+  const sections: BucketSection[] = [];
+
   for (const { key, header } of buckets) {
     const inBucket = mainSignups.filter((s) => s.role !== 'Fill' && bucketOf(s) === key);
     if (inBucket.length === 0) continue;
 
-    embed.addFields({ name: header, value: '​', inline: false });
-    addClassFields(embed, inBucket, instance.faction, signupNumber);
+    sections.push({ header, classes: classLists(inBucket, instance.faction, signupNumber) });
   }
+
+  const trailing: Field[] = [];
 
   // Fill
   const fillSignups = mainSignups.filter((s) => s.role === 'Fill');
@@ -84,11 +87,7 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
 
       return `🔄 \`${String(signupNumber.get(s.id) ?? 0).padStart(2, ' ')}\` ${who(s)}${noteStr}`;
     });
-    embed.addFields({
-      name: `🔄 Fill (${fillSignups.length})`,
-      value: lines.join('\n'),
-      inline: true,
-    });
+    trailing.push(...fieldsFor(`🔄 Fill (${fillSignups.length})`, lines, true));
   }
 
   // Absence
@@ -99,12 +98,10 @@ export function buildSignupEmbed(instance: EventInstance, signups: Signup[]): Em
 
       return `${cls?.emoji ?? '❌'} ${nickname ? `${nickname} - ` : ''}~~${s.characterName}~~`;
     });
-    embed.addFields({
-      name: `❌ Absence (${absenceSignups.length})`,
-      value: lines.join('\n'),
-      inline: false,
-    });
+    trailing.push(...fieldsFor(`❌ Absence (${absenceSignups.length})`, lines, false));
   }
+
+  embed.addFields(...layOut(embed.data.fields?.length ?? 0, sections, trailing));
 
   // Footer
   if (instance.status === 'closed') {
@@ -134,12 +131,11 @@ function bucketOf(signup: Signup): RoleBucket {
 }
 
 /** One inline field per class present, in the raid's display order. */
-function addClassFields(
-  embed: EmbedBuilder,
+function classLists(
   signups: Signup[],
   faction: EventInstance['faction'],
   signupNumber: Map<string, number>,
-): void {
+): ClassList[] {
   const byClass = new Map<string, Signup[]>();
   for (const s of signups) {
     const arr = byClass.get(s.className) ?? [];
@@ -147,18 +143,109 @@ function addClassFields(
     byClass.set(s.className, arr);
   }
 
+  const lists: ClassList[] = [];
+
   for (const className of classDisplayOrder(faction)) {
     const classSignups = byClass.get(className);
     if (!classSignups || classSignups.length === 0) continue;
 
     const wowClass = findClass(className);
-    const lines = classSignups.map((s) => formatLine(s, signupNumber.get(s.id) ?? 0));
-    embed.addFields({
-      name: `${wowClass?.emoji ?? '❓'} ${className} (${classSignups.length})`,
-      value: lines.join('\n'),
-      inline: true,
+    lists.push({
+      heading: `${wowClass?.emoji ?? '❓'} ${className} (${classSignups.length})`,
+      lines: classSignups.map((s) => formatLine(s, signupNumber.get(s.id) ?? 0)),
     });
   }
+
+  return lists;
+}
+
+interface ClassList {
+  heading: string;
+  lines: string[];
+}
+
+interface BucketSection {
+  header: string;
+  classes: ClassList[];
+}
+
+interface Field {
+  name: string;
+  value: string;
+  inline: boolean;
+}
+
+/**
+ * Discord's limits on an embed. The builder throws past either of them -
+ * "Received one or more errors" - and the message is never edited, so the
+ * person who had just signed up was told something went wrong when it had
+ * not. The list hit the first one once a class had fourteen or so signups.
+ */
+const FIELD_VALUE_LIMIT = 1024;
+
+const FIELD_LIMIT = 25;
+
+/**
+ * The lines in as few fields as they fit, none past the value limit.
+ *
+ * The name goes on the first; the rest carry a blank so they read as the
+ * same list continued rather than a new one.
+ */
+function fieldsFor(name: string, lines: string[], inline: boolean): Field[] {
+  const values: string[] = [];
+  let current = '';
+
+  for (const line of lines) {
+    const next = current === '' ? line : `${current}\n${line}`;
+
+    if (next.length > FIELD_VALUE_LIMIT && current !== '') {
+      values.push(current);
+      current = line;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current !== '') {
+    values.push(current);
+  }
+
+  return values.map((value, i) => ({ name: i === 0 ? name : '​', value, inline }));
+}
+
+/**
+ * The signup lists as fields, within the field limit.
+ *
+ * One inline field per class is how the list reads best, and is what it
+ * gets whenever it fits. A raid with a bench can have more fields than
+ * Discord allows once a long class is split, so then each bucket becomes
+ * one running list with the class headings inside it - every name still
+ * on the message, in the same order, just closer together.
+ */
+function layOut(taken: number, sections: BucketSection[], trailing: Field[]): Field[] {
+  const perClass: Field[] = [];
+
+  for (const section of sections) {
+    perClass.push({ name: section.header, value: '​', inline: false });
+
+    for (const list of section.classes) {
+      perClass.push(...fieldsFor(list.heading, list.lines, true));
+    }
+  }
+
+  if (taken + perClass.length + trailing.length <= FIELD_LIMIT) {
+    return [...perClass, ...trailing];
+  }
+
+  const perBucket: Field[] = [];
+
+  for (const section of sections) {
+    const lines = section.classes.flatMap((list) => [`**${list.heading}**`, ...list.lines]);
+
+    perBucket.push(...fieldsFor(section.header, lines, false));
+  }
+
+  return [...perBucket, ...trailing];
 }
 
 /**

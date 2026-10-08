@@ -119,3 +119,92 @@ describe('signup embed', () => {
     expect(summary).toContain('**2** DPS');
   });
 });
+
+describe('signup embed within Discord limits', () => {
+  /** A class full of people with long server names - what a bench night looks like. */
+  function crowd(count: number, over: Partial<Signup> = {}): Signup[] {
+    return Array.from({ length: count }, (_, i) =>
+      signup({
+        discordNickname: `A rather long nickname ${i + 1}`,
+        characterName: `Character${i + 1}`,
+        note: 'Can pull',
+        className: 'Warrior',
+        spec: 'Fury',
+        ...over,
+      }));
+  }
+
+  it('splits a class with too many lines for one field instead of throwing', () => {
+    // Twenty warriors used to put the Warrior field past 1024 characters,
+    // the builder threw, and the person who had just signed up was told
+    // something went wrong.
+    const all = fields(crowd(20));
+
+    expect(all.every((f) => f.value.length <= 1024)).toBe(true);
+
+    const warriors = all.filter((f) => f.name.includes('Warrior') || f.name === '\u200b');
+    const text = warriors.map((f) => f.value).join('\n');
+
+    for (let i = 1; i <= 20; i++) {
+      expect(text).toContain(`Character${i}`);
+    }
+  });
+
+  it('names the first part of a split class and leaves the rest blank', () => {
+    const all = fields(crowd(20));
+    const warriorAt = all.findIndex((f) => f.name.startsWith('<:') && f.name.includes('Warrior (20)'));
+
+    expect(warriorAt).toBeGreaterThan(-1);
+    expect(all[warriorAt + 1].name).toBe('\u200b');
+  });
+
+  it('falls back to one list per bucket rather than exceeding 25 fields', () => {
+    // Every Alliance class in every bucket, fourteen deep: two fields each
+    // once split, which is well past the twenty-five an embed may carry.
+    const everybody = [
+      ...crowd(14, { role: 'Tank', className: 'Warrior', spec: 'Protection' }),
+      ...crowd(14, { role: 'Tank', className: 'Druid', spec: 'Feral' }),
+      ...crowd(14, { role: 'Tank', className: 'Paladin', spec: 'Protection' }),
+      ...crowd(14, { role: 'Healer', className: 'Priest', spec: 'Holy' }),
+      ...crowd(14, { role: 'Healer', className: 'Paladin', spec: 'Holy' }),
+      ...crowd(14, { role: 'Healer', className: 'Druid', spec: 'Restoration' }),
+      ...crowd(14, { role: 'DPS', className: 'Warrior', spec: 'Fury' }),
+      ...crowd(14, { role: 'DPS', className: 'Rogue', spec: 'Combat' }),
+      ...crowd(14, { role: 'DPS', className: 'Hunter', spec: 'Marksmanship' }),
+      ...crowd(14, { role: 'DPS', className: 'Mage', spec: 'Fire' }),
+      ...crowd(14, { role: 'DPS', className: 'Warlock', spec: 'Destruction' }),
+      ...crowd(14, { role: 'DPS', className: 'Druid', spec: 'Balance' }),
+      ...crowd(14, { role: 'DPS', className: 'Priest', spec: 'Shadow' }),
+      ...crowd(5, { role: 'Fill', className: 'Hunter', spec: 'Marksmanship' }),
+      ...crowd(5, { role: 'Absence', className: 'Hunter', spec: 'Marksmanship' }),
+    ];
+
+    const all = fields(everybody);
+
+    expect(all.length).toBeLessThanOrEqual(25);
+    expect(all.every((f) => f.value.length <= 1024)).toBe(true);
+
+    // Every name is still on the message, and the class headings have moved
+    // inside the bucket's own list.
+    const tanks = all.find((f) => f.name.includes('TANKS'));
+    expect(tanks?.value).toContain('Warrior (14)**');
+
+    const text = all.map((f) => `${f.name}\n${f.value}`).join('\n');
+    expect((text.match(/Character\d+/g) ?? []).length).toBe(everybody.length);
+  });
+
+  it('keeps one field per class when it all fits', () => {
+    const all = fields([
+      ...crowd(3, { className: 'Warrior', spec: 'Fury' }),
+      ...crowd(3, { className: 'Mage', spec: 'Fire' }),
+    ]);
+
+    // The info bar above the list has blank names of its own; nothing under
+    // the first bucket header should.
+    const listStart = all.findIndex((f) => f.name.includes('DPS  \u2014'));
+    expect(listStart).toBeGreaterThan(-1);
+    expect(all.slice(listStart).filter((f) => f.name === '\u200b')).toHaveLength(0);
+    expect(all.some((f) => f.name.includes('Warrior (3)'))).toBe(true);
+    expect(all.some((f) => f.name.includes('Mage (3)'))).toBe(true);
+  });
+});
