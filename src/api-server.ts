@@ -134,7 +134,7 @@ const weeklyScheduleSchema = z.object({
 /** What the website may change about a recurring post. */
 const templatePatchSchema = z.object({
   title: z.string().min(1).max(256).optional(),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(2000).nullable().optional(),
   enabled: z.boolean().optional(),
   channelId: z.string().optional(),
   faction: z.enum(['horde', 'alliance']).optional(),
@@ -149,7 +149,7 @@ const templateCreateSchema = z.object({
   guildId: z.string(),
   channelId: z.string(),
   title: z.string().min(1).max(256),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(2000).nullable().optional(),
   faction: z.enum(['horde', 'alliance']),
   roles: z.array(z.string().min(1).max(32)).min(1).max(10).optional(),
   raidType: z.string().max(64).optional(),
@@ -706,7 +706,7 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
       return;
     }
 
-    const { postNow, createdBy, schedule: wanted, ...rest } = parsed.data;
+    const { postNow, createdBy, schedule: wanted, description, ...rest } = parsed.data;
     const schedule = { ...wanted, timezone: wanted.timezone ?? config.defaultTimezone };
 
     let nextFireAt: Date;
@@ -726,6 +726,8 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
 
       const template = await store.createTemplate({
         ...rest,
+        // Blank from the website arrives as null or ''; the post shows nothing either way.
+        description: description || undefined,
         roles: rest.roles ?? ['Tank', 'Healer', 'DPS', 'Fill', 'Bench'],
         schedule,
         nextFireAt: nextFireAt.toISOString(),
@@ -758,8 +760,12 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         return;
       }
 
-      const { schedule, channelId, ...rest } = parsed.data;
+      const { schedule, channelId, description, ...rest } = parsed.data;
       const patch: Partial<EventTemplate> = { ...rest };
+
+      if (description !== undefined) {
+        patch.description = description || undefined;
+      }
 
       if (channelId !== undefined) {
         const channel = await client.channels.fetch(channelId);
