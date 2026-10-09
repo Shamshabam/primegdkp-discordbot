@@ -14,6 +14,7 @@ import { buildRosterButtons, rosterAttachment } from './roster-service.js';
 import { key } from './roster.js';
 import type { SignupStore } from './store/signup-store.js';
 import { nextOccurrence } from './schedule/next-occurrence.js';
+import { postInstance } from './scheduler.js';
 import type { EventInstance, EventTemplate } from './types.js';
 
 const postSignupSchema = z.object({
@@ -123,23 +124,40 @@ const updateMessageSchema = z.object({
   filename: z.string().max(255).optional(),
 });
 
-/**
- * What the website may change about a recurring post. The channel, roles and
- * faction stay where they were set from Discord: those are decisions about the
- * server, not about when the signup goes up.
- */
+const weeklyScheduleSchema = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+  timezone: z.string().max(64).optional(),
+});
+
+/** What the website may change about a recurring post. */
 const templatePatchSchema = z.object({
   title: z.string().min(1).max(256).optional(),
   description: z.string().max(2000).optional(),
   enabled: z.boolean().optional(),
-  schedule: z
-    .object({
-      dayOfWeek: z.number().int().min(0).max(6),
-      hour: z.number().int().min(0).max(23),
-      minute: z.number().int().min(0).max(59),
-      timezone: z.string().max(64).optional(),
-    })
-    .optional(),
+  channelId: z.string().optional(),
+  faction: z.enum(['horde', 'alliance']).optional(),
+  roles: z.array(z.string().min(1).max(32)).min(1).max(10).optional(),
+  raidType: z.string().max(64).optional(),
+  postDaysBefore: z.number().int().min(0).max(14).optional(),
+  schedule: weeklyScheduleSchema.optional(),
+});
+
+/** A recurring post set up from the website rather than with /prime create. */
+const templateCreateSchema = z.object({
+  guildId: z.string(),
+  channelId: z.string(),
+  title: z.string().min(1).max(256),
+  description: z.string().max(2000).optional(),
+  faction: z.enum(['horde', 'alliance']),
+  roles: z.array(z.string().min(1).max(32)).min(1).max(10).optional(),
+  raidType: z.string().max(64).optional(),
+  postDaysBefore: z.number().int().min(0).max(14).optional(),
+  schedule: weeklyScheduleSchema,
+  /** Put the signup for the next raid up right away, as /prime create does. */
+  postNow: z.boolean().optional(),
+  createdBy: z.string().max(64).optional(),
 });
 
 const ticketSchema = z.object({
@@ -681,6 +699,51 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
     }
   });
 
+  app.post('/api/templates', async (req, res) => {
+    const parsed = templateCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request', details: parsed.error.issues });
+      return;
+    }
+
+    const { postNow, createdBy, schedule: wanted, ...rest } = parsed.data;
+    const schedule = { ...wanted, timezone: wanted.timezone ?? config.defaultTimezone };
+
+    let nextFireAt: Date;
+    try {
+      nextFireAt = nextOccurrence(schedule);
+    } catch {
+      res.status(400).json({ error: `"${schedule.timezone}" is not a recognized timezone name` });
+      return;
+    }
+
+    try {
+      const channel = await client.channels.fetch(rest.channelId);
+      if (!channel || channel.type !== ChannelType.GuildText || channel.guildId !== rest.guildId) {
+        res.status(400).json({ error: 'Invalid text channel' });
+        return;
+      }
+
+      const template = await store.createTemplate({
+        ...rest,
+        roles: rest.roles ?? ['Tank', 'Healer', 'DPS', 'Fill', 'Bench'],
+        schedule,
+        nextFireAt: nextFireAt.toISOString(),
+        createdBy: createdBy ?? 'website',
+      });
+
+      // The first post goes up now when asked, whatever the lead time says:
+      // the person setting it up wants to see it, and the scheduler then
+      // finds it already posted and waits for the week after.
+      const instance = postNow ? await postInstance(client, store, template) : null;
+
+      res.json({ template, instance });
+    } catch (err) {
+      console.error('Failed to create template:', err);
+      res.status(500).json({ error: 'Failed to create template' });
+    }
+  });
+
   app.patch('/api/templates/:templateId', async (req, res) => {
     const parsed = templatePatchSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -695,8 +758,17 @@ export function startApiServer(client: Client, store: SignupStore, config: Confi
         return;
       }
 
-      const { schedule, ...rest } = parsed.data;
+      const { schedule, channelId, ...rest } = parsed.data;
       const patch: Partial<EventTemplate> = { ...rest };
+
+      if (channelId !== undefined) {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || channel.type !== ChannelType.GuildText || channel.guildId !== template.guildId) {
+          res.status(400).json({ error: 'Invalid text channel' });
+          return;
+        }
+        patch.channelId = channelId;
+      }
 
       if (schedule) {
         // The stored timezone is the one the raid was scheduled in; a caller

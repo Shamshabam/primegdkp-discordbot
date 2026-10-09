@@ -25,6 +25,19 @@ export interface EventTemplate {
    * written before this flag existed keeps posting.
    */
   enabled?: boolean;
+  /**
+   * The raid the website files each post under, 'naxxramas' or 'world_tour'.
+   * Absent on templates made from Discord before the website could set it;
+   * the website then reads it off the title.
+   */
+  raidType?: string;
+  /**
+   * How many days before the raid the signup goes up. Absent means 0: posted
+   * at the raid's own time, which is how every template before this field
+   * behaved.
+   */
+  postDaysBefore?: number;
+  /** When the next raid starts; the post goes up `postDaysBefore` days ahead of it. */
   nextFireAt: string;
   createdBy: string;
   createdAt: string;
