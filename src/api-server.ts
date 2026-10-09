@@ -140,7 +140,7 @@ const templatePatchSchema = z.object({
   faction: z.enum(['horde', 'alliance']).optional(),
   roles: z.array(z.string().min(1).max(32)).min(1).max(10).optional(),
   raidType: z.string().max(64).optional(),
-  postDaysBefore: z.number().int().min(0).max(14).optional(),
+  postAt: weeklyScheduleSchema.omit({ timezone: true }).optional(),
   schedule: weeklyScheduleSchema.optional(),
 });
 
@@ -153,7 +153,7 @@ const templateCreateSchema = z.object({
   faction: z.enum(['horde', 'alliance']),
   roles: z.array(z.string().min(1).max(32)).min(1).max(10).optional(),
   raidType: z.string().max(64).optional(),
-  postDaysBefore: z.number().int().min(0).max(14).optional(),
+  postAt: weeklyScheduleSchema.omit({ timezone: true }).optional(),
   schedule: weeklyScheduleSchema,
   /** Put the signup for the next raid up right away, as /prime create does. */
   postNow: z.boolean().optional(),

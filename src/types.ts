@@ -32,12 +32,15 @@ export interface EventTemplate {
    */
   raidType?: string;
   /**
-   * How many days before the raid the signup goes up. Absent means 0: posted
-   * at the raid's own time, which is how every template before this field
-   * behaved.
+   * The weekly moment the signup for the next raid goes up, in the schedule's
+   * own timezone: the last time this day and time comes round before the
+   * raid. "Wednesday 20:30" for a Wednesday 19:30 raid posts next week's
+   * signup an hour after this week's raid starts. Absent means the signup is
+   * posted at the raid's own time, which is how every template before this
+   * field behaved.
    */
-  postDaysBefore?: number;
-  /** When the next raid starts; the post goes up `postDaysBefore` days ahead of it. */
+  postAt?: Pick<WeeklySchedule, 'dayOfWeek' | 'hour' | 'minute'>;
+  /** When the next raid starts; the post for it goes up at `postAt`. */
   nextFireAt: string;
   createdBy: string;
   createdAt: string;

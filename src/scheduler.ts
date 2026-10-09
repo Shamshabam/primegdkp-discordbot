@@ -21,9 +21,16 @@ export function startScheduler(client: Client, store: SignupStore): NodeJS.Timeo
   return setInterval(tick, CHECK_INTERVAL_MS);
 }
 
-/** When the signup for the template's next raid goes up. */
-export function postTimeOf(template: Pick<EventTemplate, 'nextFireAt' | 'postDaysBefore'>): Date {
-  return new Date(new Date(template.nextFireAt).getTime() - (template.postDaysBefore ?? 0) * DAY_MS);
+/**
+ * When the signup for the template's next raid goes up: the last time the
+ * post day and time come round in the week before the raid, up to and
+ * including the raid's own moment. With no post time set it is the raid time.
+ */
+export function postTimeOf(template: Pick<EventTemplate, 'nextFireAt' | 'postAt' | 'schedule'>): Date {
+  const raidAt = new Date(template.nextFireAt);
+  if (!template.postAt) return raidAt;
+
+  return nextOccurrence({ ...template.postAt, timezone: template.schedule.timezone }, new Date(raidAt.getTime() - 7 * DAY_MS));
 }
 
 /**
