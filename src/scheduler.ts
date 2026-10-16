@@ -8,9 +8,13 @@ import type { EventInstance, EventTemplate } from './types.js';
 const CHECK_INTERVAL_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
- * How long after a raid's start its signup may still go up. A template with no
- * lead posts at the raid's own time, so the start itself cannot mean "too
- * late"; a bot that was down for a day should not post for last night either.
+ * How long after a raid's start its signup may still go up, if it never did. A
+ * template with no lead posts at the raid's own time, so the start itself
+ * cannot mean "too late"; a bot that was down for a day should not post for
+ * last night either.
+ *
+ * Only for a raid whose signup is missing. One that went up moves on the
+ * moment the raid starts - see decide().
  */
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 
@@ -37,11 +41,20 @@ export function postTimeOf(template: Pick<EventTemplate, 'nextFireAt' | 'postAt'
  * What to do with a template on a tick: post the signup for its next raid,
  * roll past a raid that is already over, or leave it alone until it is due.
  *
- * A raid whose start has already gone by is not posted - the bot may have
- * been down, and nobody wants a signup for last Wednesday - it just rolls
- * forward to the week after. One that is due is posted once: a second tick
- * within the same window, or a lead time shortened after the post went up,
- * finds the instance already there and does nothing.
+ * A raid that has started is over as far as signups go. Its signup went up,
+ * people came, and the template moves on to the week after - straight away,
+ * because the following week's post cannot go up until it does. Holding the
+ * old raid for six hours after it started held next week's signup for six
+ * hours too: a Friday raid with its post at 23:00 Friday went up at four on
+ * Saturday morning, every week, and read as never having gone up at all.
+ *
+ * A raid whose signup never went up keeps the grace: the bot may have been
+ * down at the only minute it could have posted, and a late signup beats
+ * none. Six hours on it is let go rather than posted for last night.
+ *
+ * One that is due is posted once: a second tick within the same window, or a
+ * lead time shortened after the post went up, finds the instance already
+ * there and does nothing.
  */
 export function decide(
   template: EventTemplate,
@@ -49,11 +62,14 @@ export function decide(
   posted: Pick<EventInstance, 'templateId' | 'scheduledFor'>[],
 ): 'wait' | 'post' | 'skip' {
   const raidAt = new Date(template.nextFireAt);
+  const alreadyPosted = posted.some((i) => i.templateId === template.id && i.scheduledFor === template.nextFireAt);
+  const nothingToPost = alreadyPosted || template.enabled === false;
 
+  if (raidAt.getTime() <= now.getTime() && nothingToPost) return 'skip';
   if (raidAt.getTime() + STALE_AFTER_MS <= now.getTime()) return 'skip';
   if (postTimeOf(template).getTime() > now.getTime()) return 'wait';
   if (template.enabled === false) return 'wait';
-  if (posted.some((i) => i.templateId === template.id && i.scheduledFor === template.nextFireAt)) return 'wait';
+  if (alreadyPosted) return 'wait';
 
   return 'post';
 }
