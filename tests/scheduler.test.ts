@@ -123,3 +123,46 @@ describe('rolling on to next week', () => {
     expect(decide(worldTour(nextWeek), new Date('2026-10-16T23:00:00Z'), thisWeekPosted)).toBe('post');
   });
 });
+
+
+/**
+ * The clocks going back between one week's raid and the next.
+ *
+ * Seven times twenty-four hours before a 19:00 CET raid is 20:00 CEST, not
+ * 19:00, so the search for the post time started exactly on the post minute
+ * and "strictly after" sent it a week on - to after the raid it was for.
+ */
+describe('across the end of summer time', () => {
+  // Naxx Wednesday: 19:00 Copenhagen, signup the Wednesday before at 20:00.
+  // The raid on the 28th is CET (18:00Z); the Wednesday before it is CEST.
+  const naxxWednesday = template({
+    schedule: { dayOfWeek: 3, hour: 19, minute: 0, timezone: 'Europe/Copenhagen' },
+    postAt: { dayOfWeek: 3, hour: 20, minute: 0 },
+    nextFireAt: '2026-10-28T18:00:00.000Z',
+  });
+
+  it('posts the Wednesday before at 20:00 local, not the Wednesday after', () => {
+    // 20:00 CEST on the 21st is 18:00Z.
+    expect(postTimeOf(naxxWednesday).toISOString()).toBe('2026-10-21T18:00:00.000Z');
+  });
+
+  it('so the signup goes up on the night, forty-five minutes late is still up', () => {
+    expect(decide(naxxWednesday, new Date('2026-10-21T18:45:00Z'), [])).toBe('post');
+  });
+
+  it('and the same for a Sunday raid on the day the clocks change', () => {
+    // 14:30 Copenhagen on the 25th is CET (13:30Z); the Sunday before is CEST.
+    const sunday = template({
+      schedule: { dayOfWeek: 0, hour: 14, minute: 30, timezone: 'Europe/Copenhagen' },
+      postAt: { dayOfWeek: 0, hour: 15, minute: 30 },
+      nextFireAt: '2026-10-25T13:30:00.000Z',
+    });
+
+    // 15:30 CEST on the 18th is 13:30Z.
+    expect(postTimeOf(sunday).toISOString()).toBe('2026-10-18T13:30:00.000Z');
+  });
+
+  it('leaves a week with no change exactly as it was', () => {
+    expect(postTimeOf(template({ postAt: WED_2030 })).toISOString()).toBe('2026-03-04T20:30:00.000Z');
+  });
+});

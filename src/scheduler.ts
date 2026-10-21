@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { subDays } from 'date-fns';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { ChannelType, type Client } from 'discord.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import { nextOccurrence } from './schedule/next-occurrence.js';
@@ -6,7 +8,6 @@ import type { SignupStore } from './store/signup-store.js';
 import type { EventInstance, EventTemplate } from './types.js';
 
 const CHECK_INTERVAL_MS = 60_000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * How long after a raid's start its signup may still go up, if it never did. A
  * template with no lead posts at the raid's own time, so the start itself
@@ -29,12 +30,24 @@ export function startScheduler(client: Client, store: SignupStore): NodeJS.Timeo
  * When the signup for the template's next raid goes up: the last time the
  * post day and time come round in the week before the raid, up to and
  * including the raid's own moment. With no post time set it is the raid time.
+ *
+ * "The week before" is seven days on the raid's own clock, not seven times
+ * twenty-four hours. The clocks went back on a Sunday between a Wednesday
+ * raid and the Wednesday before it, so 19:00 one week was 20:00 the other
+ * in Copenhagen: the search started exactly on the post minute, "strictly
+ * after" pushed it a week on to the far side of the raid, and the scheduler
+ * waited for a post time that came after the raid it was for - then rolled
+ * past the raid without ever posting. Every template whose week spanned the
+ * change did the same.
  */
 export function postTimeOf(template: Pick<EventTemplate, 'nextFireAt' | 'postAt' | 'schedule'>): Date {
   const raidAt = new Date(template.nextFireAt);
   if (!template.postAt) return raidAt;
 
-  return nextOccurrence({ ...template.postAt, timezone: template.schedule.timezone }, new Date(raidAt.getTime() - 7 * DAY_MS));
+  const timezone = template.schedule.timezone;
+  const aWeekBefore = fromZonedTime(subDays(toZonedTime(raidAt, timezone), 7), timezone);
+
+  return nextOccurrence({ ...template.postAt, timezone }, aWeekBefore);
 }
 
 /**
