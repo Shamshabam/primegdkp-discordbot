@@ -28,7 +28,12 @@ export async function handleButton(interaction: ButtonInteraction, store: Signup
 
     if (action === 'signup' || action === 'editsignup') {
       if (instance.status === 'closed') {
-        await interaction.reply({ content: 'Signups are closed for this event.', ephemeral: true });
+        // Which raid, so a press on last week's post reads as what it is.
+        const when = new Date(instance.scheduledFor).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+        await interaction.reply({
+          content: `This post was for **${instance.title}** on ${when}, which is over. Sign up on the newest post in this channel.`,
+          ephemeral: true,
+        });
         return;
       }
 

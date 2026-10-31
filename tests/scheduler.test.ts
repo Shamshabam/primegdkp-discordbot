@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decide, postTimeOf } from '../src/scheduler.js';
+import { decide, isFinished, postTimeOf } from '../src/scheduler.js';
 import type { EventTemplate } from '../src/types.js';
 
 const template = (overrides: Partial<EventTemplate> = {}): EventTemplate => ({
@@ -164,5 +164,24 @@ describe('across the end of summer time', () => {
 
   it('leaves a week with no change exactly as it was', () => {
     expect(postTimeOf(template({ postAt: WED_2030 })).toISOString()).toBe('2026-03-04T20:30:00.000Z');
+  });
+});
+
+
+describe('a signup whose raid is over', () => {
+  const raidAt = '2026-10-24T12:30:00.000Z';
+
+  it('is finished six hours after the raid started, not before', () => {
+    expect(isFinished({ scheduledFor: raidAt }, new Date('2026-10-24T18:29:00Z'))).toBe(false);
+    expect(isFinished({ scheduledFor: raidAt }, new Date('2026-10-24T18:30:00Z'))).toBe(true);
+  });
+
+  it('is certainly finished a week on, when somebody presses its button by mistake', () => {
+    // Saturday Early Naxx of the 24th, pressed on the 31st at 14:58.
+    expect(isFinished({ scheduledFor: raidAt }, new Date('2026-10-31T12:58:02Z'))).toBe(true);
+  });
+
+  it('is not finished while the raid is still ahead', () => {
+    expect(isFinished({ scheduledFor: '2026-10-31T13:30:00.000Z' }, new Date('2026-10-31T13:05:00Z'))).toBe(false);
   });
 });

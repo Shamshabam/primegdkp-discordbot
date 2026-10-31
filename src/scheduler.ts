@@ -4,6 +4,7 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { ChannelType, type Client } from 'discord.js';
 import { buildSignupButtons, buildSignupEmbed } from './embeds/signup-embed.js';
 import { nextOccurrence } from './schedule/next-occurrence.js';
+import { refreshSignupMessage } from './signup-service.js';
 import type { SignupStore } from './store/signup-store.js';
 import type { EventInstance, EventTemplate } from './types.js';
 
@@ -87,8 +88,54 @@ export function decide(
   return 'post';
 }
 
+/**
+ * Whether a signup's raid is over, as far as signing up goes.
+ *
+ * The same six hours the website gives a raid before it stops being "one you
+ * are running": by then the raid has happened, and a Sign Up press is for the
+ * week after - on the week after's post, not this one.
+ */
+export function isFinished(instance: Pick<EventInstance, 'scheduledFor'>, now: Date): boolean {
+  return new Date(instance.scheduledFor).getTime() + STALE_AFTER_MS <= now.getTime();
+}
+
+/**
+ * Close every signup whose raid is over, and grey out its buttons.
+ *
+ * Nothing ever closed one. Every signup post the bot had ever made kept its
+ * buttons live, and a raider pressed Sign Up on last week's Saturday post,
+ * got "Signed up as ..." back, and was on nobody's roster for this week.
+ * The button handler has refused a closed signup all along; this is the
+ * missing half that makes one closed.
+ *
+ * The post is redrawn so the buttons show disabled. A post that has since
+ * been deleted is simply closed in the store - which is also what stops the
+ * bot redrawing it on every restart.
+ */
+export async function closeFinishedSignups(client: Client, store: SignupStore, now: Date): Promise<number> {
+  let closed = 0;
+
+  for (const instance of await store.listOpenInstances()) {
+    if (!isFinished(instance, now)) continue;
+
+    await store.updateInstance(instance.id, { status: 'closed' });
+    closed++;
+
+    try {
+      await refreshSignupMessage(client, store, instance.id);
+    } catch (error) {
+      console.error(`Closed signup ${instance.id} but could not redraw its post:`, error);
+    }
+  }
+
+  return closed;
+}
+
 async function checkAndPost(client: Client, store: SignupStore): Promise<void> {
   const now = new Date();
+
+  await closeFinishedSignups(client, store, now);
+
   const open = await store.listOpenInstances();
 
   for (const guild of client.guilds.cache.values()) {
